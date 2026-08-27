@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using MaksIT.Wvc210.UI.ViewModels;
 
 namespace MaksIT.Wvc210.UI.Views;
@@ -14,6 +15,15 @@ public partial class MainWindow : Window
             if (DataContext is MainViewModel vm)
                 vm.Shutdown();
         };
+    }
+
+    private async void OnAboutClick(object? sender, RoutedEventArgs e)
+    {
+        var about = new AboutWindow
+        {
+            DataContext = new AboutViewModel()
+        };
+        await about.ShowDialog(this);
     }
 
     private async void OnKeyDown(object? sender, KeyEventArgs e)

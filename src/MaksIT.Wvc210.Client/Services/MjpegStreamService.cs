@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text;
 
+
 namespace MaksIT.Wvc210.Client;
 
 public sealed class MjpegStreamService
@@ -14,29 +15,38 @@ public sealed class MjpegStreamService
         {
             await RunMjpegAsync(client, onFrame, ct).ConfigureAwait(false);
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             throw;
         }
         catch
         {
-            await RunSnapshotLoopAsync(client, onFrame, ct).ConfigureAwait(false);
+            await RunSnapshotsAsync(client, onFrame, ct).ConfigureAwait(false);
         }
     }
 
+    public Task RunSnapshotsAsync(
+        CameraClient client,
+        Func<byte[], Task> onFrame,
+        CancellationToken ct)
+        => RunSnapshotLoopAsync(client, onFrame, ct);
+
     private static async Task RunMjpegAsync(CameraClient client, Func<byte[], Task> onFrame, CancellationToken ct)
     {
-        using var response = await client.OpenMjpegAsync(ct).ConfigureAwait(false);
-        await using var stream = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        var reader = new BufferedByteReader(stream);
+        using var connection = await client.OpenRawGetAsync("/img/video.mjpeg", ocxClient: false, ct).ConfigureAwait(false);
+        var reader = new BufferedByteReader(connection.Stream, connection.Preamble);
 
         while (!ct.IsCancellationRequested)
         {
+            using var frameCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            frameCts.CancelAfter(TimeSpan.FromSeconds(4));
+            var frameToken = frameCts.Token;
+
             string? line;
             var contentLength = -1;
             do
             {
-                line = await reader.ReadLineAsync(ct).ConfigureAwait(false);
+                line = await reader.ReadLineAsync(frameToken).ConfigureAwait(false);
                 if (line is null)
                     throw new IOException("MJPEG stream ended.");
                 if (line.StartsWith("Content-Length:", StringComparison.OrdinalIgnoreCase))
@@ -47,16 +57,16 @@ public sealed class MjpegStreamService
                 }
             } while (line.Length > 0);
 
-            if (contentLength <= 0 || contentLength > 4_000_000)
+            if (contentLength <= 0 || contentLength > 400_000)
             {
-                var jpeg = await reader.ReadJpegMarkerAsync(ct).ConfigureAwait(false);
+                var jpeg = await reader.ReadJpegMarkerAsync(frameToken).ConfigureAwait(false);
                 if (jpeg is null)
                     throw new IOException("Could not parse JPEG from MJPEG stream.");
                 await onFrame(jpeg).ConfigureAwait(false);
                 continue;
             }
 
-            var frame = await reader.ReadExactAsync(contentLength, ct).ConfigureAwait(false);
+            var frame = await reader.ReadExactAsync(contentLength, frameToken).ConfigureAwait(false);
             await onFrame(frame).ConfigureAwait(false);
         }
     }
@@ -78,7 +88,15 @@ public sealed class MjpegStreamService
         private int _offset;
         private int _count;
 
-        public BufferedByteReader(Stream stream) => _stream = stream;
+        public BufferedByteReader(Stream stream, byte[]? preamble = null)
+        {
+            _stream = stream;
+            if (preamble is null || preamble.Length == 0)
+                return;
+            var n = Math.Min(preamble.Length, _buffer.Length);
+            Buffer.BlockCopy(preamble, 0, _buffer, 0, n);
+            _count = n;
+        }
 
         public async Task<string?> ReadLineAsync(CancellationToken ct)
         {

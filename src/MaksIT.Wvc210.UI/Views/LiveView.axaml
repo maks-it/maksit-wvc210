@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+             xmlns:models="using:MaksIT.Wvc210.Shared"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
@@ -11,7 +12,7 @@
         <Border Classes="card" Padding="0" ClipToBounds="True" Background="#070A0D">
             <Grid>
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
-                            IsVisible="{Binding !HasFrame}">
+                            IsVisible="{Binding !HasPreview}">
                     <TextBlock Text="No live image" FontSize="16" Opacity="0.55" HorizontalAlignment="Center" />
                     <TextBlock Text="{Binding Status}" Classes="hint" HorizontalAlignment="Center" MaxWidth="280"
                                TextAlignment="Center" />
@@ -19,7 +20,9 @@
                 <Image x:Name="VideoImage"
                        Source="{Binding Frame}"
                        Stretch="Uniform"
-                       PointerPressed="OnVideoPressed" />
+                       Cursor="Cross"
+                       IsVisible="{Binding HasPreview}"
+                       PointerPressed="OnPreviewPressed" />
                 <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12"
                         Background="#CC0B1014" CornerRadius="16" Padding="10,5"
                         IsVisible="{Binding IsStreaming}">
@@ -77,7 +80,9 @@
                             <Button Content="User home" Command="{Binding UserHomeCommand}" Margin="0,0,6,6" Classes="ghost" />
                             <Button Content="Save user home" Command="{Binding SetUserHomeCommand}" Margin="0,0,0,6" Classes="ghost" />
                             <Button Content="Auto-pan" Command="{Binding AutoPanCommand}" Margin="0,0,6,6" Classes="ghost" />
-                            <Button Content="Patrol" Command="{Binding PatrolCommand}" Margin="0,0,0,6" Classes="ghost" />
+                            <Button Content="{Binding PatrolLabel}" Command="{Binding PatrolCommand}"
+                                    Margin="0,0,0,6" Classes="ghost"
+                                    Classes.accent="{Binding IsPatrolling}" />
                             <Button Content="Motion area" Command="{Binding MotionPositionCommand}" Margin="0,0,6,0" Classes="ghost" />
                             <Button Content="Recalibrate" Command="{Binding RecalibrateCommand}" Classes="ghost" />
                         </UniformGrid>
@@ -88,13 +93,13 @@
                     <StackPanel Spacing="8">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Text="Presets" Classes="section" VerticalAlignment="Center" />
-                            <Button Content="Refresh" Command="{Binding RefreshPresetsCommand}" Classes="ghost"
-                                    Padding="10,5" FontSize="12" />
+                            <Button Grid.Column="1" Content="Refresh" Command="{Binding RefreshPresetsCommand}"
+                                    Classes="ghost" />
                         </Grid>
                         <ItemsControl ItemsSource="{Binding Presets}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate x:DataType="vm:PresetSlotViewModel">
-                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,6">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" Margin="0,0,0,6">
                                         <TextBlock Text="{Binding Index}" Width="18" VerticalAlignment="Center"
                                                    Foreground="{StaticResource MutedBrush}" />
                                         <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
@@ -102,9 +107,13 @@
                                         <Button Grid.Column="2" Content="Go" Padding="10,4" Margin="0,0,6,0"
                                                 Command="{Binding $parent[UserControl].((vm:LiveViewModel)DataContext).GoPresetCommand}"
                                                 CommandParameter="{Binding Key}" />
-                                        <Button Grid.Column="3" Content="Save" Padding="10,4" Classes="ghost"
+                                        <Button Grid.Column="3" Content="Save" Padding="10,4" Margin="0,0,6,0" Classes="ghost"
                                                 Command="{Binding $parent[UserControl].((vm:LiveViewModel)DataContext).SetPresetCommand}"
                                                 CommandParameter="{Binding Key}" />
+                                        <Button Grid.Column="4" Content="Delete" Padding="10,4" Classes="ghost"
+                                                Command="{Binding $parent[UserControl].((vm:LiveViewModel)DataContext).DeletePresetCommand}"
+                                                CommandParameter="{Binding Key}"
+                                                IsEnabled="{Binding HasPosition}" />
                                     </Grid>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
@@ -114,10 +123,12 @@
 
                 <Border Classes="card">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Speak" Classes="section" />
-                        <TextBlock Text="{Binding AudioStatus}" Classes="hint" />
+                        <TextBlock Text="Audio" Classes="section" />
+                        <TextBlock Text="{Binding AudioModeTitle}" />
+                        <TextBlock Text="{Binding AudioModeHint}" Classes="hint" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding AudioStatus}" Classes="hint" TextWrapping="Wrap" />
                         <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding MicLevel}"
-                                     IsVisible="{Binding IsTalking}" />
+                                     IsVisible="{Binding ShowTalkMeter}" />
                         <Button x:Name="TalkHoldButton"
                                 Content="Speak on"
                                 Classes="accent"
@@ -128,20 +139,45 @@
                                 Classes="ghost"
                                 HorizontalAlignment="Stretch"
                                 IsEnabled="{Binding CanTalk}" />
+                        <Button Content="{Binding SpeakerTestLabel}"
+                                Command="{Binding TestSpeakerCommand}"
+                                Classes="ghost"
+                                HorizontalAlignment="Stretch"
+                                IsEnabled="{Binding SpeakerTestEnabled}" />
                     </StackPanel>
                 </Border>
 
                 <Border Classes="card">
                     <StackPanel Spacing="8">
-                        <TextBlock Text="Capture &amp; VLC" Classes="section" />
-                        <TextBlock Text="In-app preview is MJPEG. Open VLC for the MPEG-4 ASF or RTSP streams."
-                                   Classes="hint" />
+                        <TextBlock Text="Day / night" Classes="section" />
+                        <ComboBox ItemsSource="{Binding DayNightChoices}"
+                                  SelectedItem="{Binding SelectedDayNight}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:DayNightChoice">
+                                    <TextBlock Text="{Binding Title}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="{Binding DayNightHint}" Classes="hint" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Stream" Classes="section" />
+                        <ComboBox ItemsSource="{Binding StreamChoices}"
+                                  SelectedItem="{Binding SelectedStream}"
+                                  HorizontalAlignment="Stretch">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="models:LiveStreamChoice">
+                                    <TextBlock Text="{Binding Title}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                        <TextBlock Text="{Binding StreamHint}" Classes="hint" TextWrapping="Wrap" />
                         <Button Content="Save snapshot" Command="{Binding SaveSnapshotCommand}"
                                 HorizontalAlignment="Stretch" Classes="accent" />
-                        <Button Content="Open ASF in VLC" Command="{Binding OpenAsfCommand}"
-                                HorizontalAlignment="Stretch" Classes="ghost" />
-                        <Button Content="Open RTSP-TCP in VLC" Command="{Binding OpenRtspCommand}"
-                                HorizontalAlignment="Stretch" Classes="ghost" />
                     </StackPanel>
                 </Border>
             </StackPanel>

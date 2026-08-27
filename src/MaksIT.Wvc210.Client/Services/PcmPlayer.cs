@@ -43,7 +43,7 @@ internal sealed class WindowsPcmPlayer : IPcmPlayer
             BufferDuration = TimeSpan.FromMilliseconds(800),
             DiscardOnBufferOverflow = true
         };
-        _output = new WaveOutEvent { DesiredLatency = 120 };
+        _output = new WaveOutEvent { DesiredLatency = 80 };
         _output.Init(_buffer);
         _output.Play();
     }

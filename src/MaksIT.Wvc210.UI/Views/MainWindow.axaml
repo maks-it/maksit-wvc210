@@ -7,7 +7,7 @@
         x:Class="MaksIT.Wvc210.UI.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="/Assets/avalonia-logo.ico"
-        Title="WVC210 Control"
+        Title="MaksIT.Wvc210"
         Width="1400" Height="880"
         MinWidth="1040" MinHeight="680"
         WindowStartupLocation="CenterScreen"
@@ -88,10 +88,15 @@
                             Content="Setup" Command="{Binding ShowSetupCommand}" />
                     <Button Classes="nav" Classes.selected="{Binding IsStatusSelected}"
                             Content="Status" Command="{Binding ShowStatusCommand}" />
+                    <Button Classes="nav" Content="About" Click="OnAboutClick" />
                 </StackPanel>
             </DockPanel>
         </Border>
 
-        <ContentControl Content="{Binding CurrentPage}" Margin="0" />
+        <Grid>
+            <ContentControl Content="{Binding Live}" IsVisible="{Binding IsLiveSelected}" />
+            <ContentControl Content="{Binding Setup}" IsVisible="{Binding IsSetupSelected}" />
+            <ContentControl Content="{Binding StatusPage}" IsVisible="{Binding IsStatusSelected}" />
+        </Grid>
     </DockPanel>
 </Window>

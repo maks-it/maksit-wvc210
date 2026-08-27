@@ -18,7 +18,6 @@ public partial class MainViewModel : ViewModelBase
     [ObservableProperty] private bool _isBusy;
     [ObservableProperty] private string _connectionStatus = "Disconnected";
     [ObservableProperty] private string _deviceSummary = "Cisco WVC210";
-    [ObservableProperty] private ViewModelBase _currentPage;
     [ObservableProperty] private string _selectedNav = "Live";
     [ObservableProperty] private bool _connectionPanelOpen = true;
 
@@ -33,8 +32,6 @@ public partial class MainViewModel : ViewModelBase
         Live = new LiveViewModel(_client, TalkSettings);
         Setup = new SetupViewModel(_client, TalkSettings);
         StatusPage = new StatusViewModel(_client);
-        CurrentPage = Live;
-
         var settings = SettingsStore.Load();
         Host = settings.Host;
         HttpPort = settings.HttpPort.ToString();
@@ -42,10 +39,18 @@ public partial class MainViewModel : ViewModelBase
         Username = settings.Username;
         Password = settings.Password;
         Live.PanStep = Math.Clamp(settings.PanStep, 1, 30);
+        Live.RestoreStream(settings.LiveStream);
+        Live.RestoreDayNight(settings.DayNight);
         TalkSettings.Restore(settings.MicrophoneId);
         TalkSettings.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(LocalTalkSettings.SelectedMicrophone))
+                Persist();
+        };
+        Live.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(LiveViewModel.SelectedStream)
+                or nameof(LiveViewModel.SelectedDayNight))
                 Persist();
         };
 
@@ -130,20 +135,21 @@ public partial class MainViewModel : ViewModelBase
     private void ShowLive()
     {
         SelectedNav = "Live";
-        CurrentPage = Live;
         if (!IsConnected)
             return;
         if (!Live.IsStreaming)
             _ = Live.StartAsync();
         else
-            _ = Live.LoadAudioSettingsAsync();
+        {
+            Live.TryResumeMpegListen();
+            _ = Live.RefreshLiveSettingsAsync();
+        }
     }
 
     [RelayCommand]
     private void ShowSetup()
     {
         SelectedNav = "Setup";
-        CurrentPage = Setup;
         if (IsConnected)
             _ = Setup.LoadSelectedAsync();
     }
@@ -152,7 +158,6 @@ public partial class MainViewModel : ViewModelBase
     private void ShowStatus()
     {
         SelectedNav = "Status";
-        CurrentPage = StatusPage;
         if (IsConnected)
             _ = StatusPage.RefreshAsync();
     }
@@ -166,7 +171,7 @@ public partial class MainViewModel : ViewModelBase
 
     public async Task HandlePtzKeyAsync(string direction)
     {
-        if (CurrentPage == Live && IsConnected)
+        if (IsLiveSelected && IsConnected)
             await Live.MoveAsync(direction).ConfigureAwait(true);
     }
 
@@ -181,7 +186,9 @@ public partial class MainViewModel : ViewModelBase
             Password = Password,
             AutoConnect = true,
             PanStep = (int)Math.Clamp(Live.PanStep, 1, 30),
-            MicrophoneId = TalkSettings.SelectedMicrophone?.Id ?? ""
+            MicrophoneId = TalkSettings.SelectedMicrophone?.Id ?? "",
+            LiveStream = Live.SelectedStream.Kind.ToString(),
+            DayNight = Live.SelectedDayNight.Mode.ToString()
         });
     }
 }

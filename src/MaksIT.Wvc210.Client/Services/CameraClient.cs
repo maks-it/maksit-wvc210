@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using MaksIT.Wvc210.Shared;
 
+
 namespace MaksIT.Wvc210.Client;
 
 public sealed class CameraClient : IDisposable
@@ -15,6 +16,7 @@ public sealed class CameraClient : IDisposable
     private int _rtspPort = 554;
     private string _username = "admin";
     private string _password = "admin";
+    private string _colorBeforeNight = DayNightChoice.ColorAuto;
 
     public bool IsConfigured => _http is not null;
     public string Host => _host;
@@ -132,6 +134,25 @@ public sealed class CameraClient : IDisposable
         return await GetStringAsync(sb.ToString(), ct).ConfigureAwait(false);
     }
 
+    public async Task<DayNightMode> GetDayNightAsync(CancellationToken ct = default)
+    {
+        var video = await GetGroupAsync("VIDEO", ct).ConfigureAwait(false);
+        var color = video.GetValueOrDefault("color", DayNightChoice.ColorAuto);
+        if (color is not DayNightChoice.ColorBlackWhite)
+            _colorBeforeNight = color;
+        return DayNightChoice.FromVideo(video);
+    }
+
+    public async Task SetDayNightAsync(DayNightMode mode, CancellationToken ct = default)
+    {
+        var video = await GetGroupAsync("VIDEO", ct).ConfigureAwait(false);
+        DayNightChoice.ApplyToVideo(video, mode, ref _colorBeforeNight);
+        await SetGroupAsync("VIDEO", new Dictionary<string, string>
+        {
+            ["color"] = video.GetValueOrDefault("color", DayNightChoice.ColorAuto)
+        }, ct).ConfigureAwait(false);
+    }
+
     public Task PanTiltAsync(string direction, int degree = 8, CancellationToken ct = default)
     {
         degree = Math.Clamp(degree, 1, 30);
@@ -168,26 +189,16 @@ public sealed class CameraClient : IDisposable
     public Task PresetSetAsync(int index, CancellationToken ct = default)
         => GetStringAsync($"/pt/ptctrl.cgi?preset=set,{index}", ct);
 
+    public async Task ClearPresetSlotAsync(int index, CancellationToken ct = default)
+    {
+        var ptz = await GetGroupAsync("PTZ", ct).ConfigureAwait(false);
+        ptz["Preset" + index + "Name"] = "";
+        ptz["Preset" + index + "Position"] = "";
+        await SetGroupAsync("PTZ", ptz, ct).ConfigureAwait(false);
+    }
+
     public async Task<Dictionary<string, string>> GetPresetsAsync(CancellationToken ct = default)
         => ParsePairs(await GetStringAsync("/pt/ptctrl.cgi?preset=all", ct).ConfigureAwait(false));
-
-    public async Task<HttpResponseMessage> OpenMjpegAsync(CancellationToken ct)
-    {
-        var http = RequireHttp();
-        var request = new HttpRequestMessage(HttpMethod.Get, "/img/video.mjpeg");
-        request.Version = HttpVersion.Version11;
-        request.Headers.Accept.ParseAdd("multipart/x-mixed-replace,image/jpeg,*/*");
-        var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct)
-            .ConfigureAwait(false);
-        if (!response.IsSuccessStatusCode)
-        {
-            var body = await response.Content.ReadAsStringAsync(ct).ConfigureAwait(false);
-            response.Dispose();
-            throw new CameraException($"MJPEG failed ({(int)response.StatusCode}): {Trim(body)}");
-        }
-
-        return response;
-    }
 
     public async Task<string> GetStringAsync(string relativeUrl, CancellationToken ct = default)
     {
@@ -381,12 +392,15 @@ public sealed class CameraClient : IDisposable
         return true;
     }
 
-    public async Task<OcxLiveConnection> OpenOcxLiveAsync(CancellationToken ct)
+    public Task<OcxLiveConnection> OpenOcxLiveAsync(CancellationToken ct)
+        => OpenRawGetAsync("/img/mjpeg.cgi", ocxClient: true, ct);
+
+    public async Task<OcxLiveConnection> OpenRawGetAsync(string path, bool ocxClient, CancellationToken ct)
     {
         if (!IsConfigured)
             throw new CameraException("Not connected.");
 
-        var tcp = new TcpClient();
+        var tcp = new TcpClient { NoDelay = true, ReceiveBufferSize = 256 * 1024 };
         try
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -394,17 +408,20 @@ public sealed class CameraClient : IDisposable
             await tcp.ConnectAsync(_host, _httpPort, timeout.Token).ConfigureAwait(false);
             var stream = tcp.GetStream();
             var token = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_username}:{_password}"));
+            var userAgent = ocxClient ? "CameraActiveX Cisco210Viewer" : "MaksIT.Wvc210/1.0";
             var header =
-                "GET /img/mjpeg.cgi HTTP/1.0\r\n" +
+                $"GET {path} HTTP/1.0\r\n" +
                 $"Host: {_host}\r\n" +
                 $"Authorization: Basic {token}\r\n" +
-                "User-Agent: CameraActiveX\r\n" +
+                $"User-Agent: {userAgent}\r\n" +
                 "Connection: close\r\n" +
                 "\r\n";
             await stream.WriteAsync(Encoding.ASCII.GetBytes(header), ct).ConfigureAwait(false);
             await stream.FlushAsync(ct).ConfigureAwait(false);
 
-            var leftover = await ReadHttpHeadersAsync(stream, ct).ConfigureAwait(false);
+            using var headerCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            headerCts.CancelAfter(TimeSpan.FromSeconds(8));
+            var leftover = await ReadHttpHeadersAsync(stream, headerCts.Token).ConfigureAwait(false);
             return new OcxLiveConnection(tcp, stream, leftover);
         }
         catch
@@ -457,32 +474,23 @@ public sealed class CameraClient : IDisposable
         return -1;
     }
 
-    public async Task PostTalkClipAsync(byte[] data, int count, TalkCodec codec, CancellationToken ct = default)
+    public async Task<TalkUploadStream> OpenTalkUploadAsync(TalkCodec codec, CancellationToken ct = default)
     {
         if (!IsConfigured)
             throw new CameraException("Not connected.");
+
+        var upload = new TalkUploadStream(_host, _httpPort, _username, _password, codec);
+        await upload.OpenAsync(ct).ConfigureAwait(false);
+        return upload;
+    }
+
+    public async Task PostTalkClipAsync(byte[] data, int count, TalkCodec codec, CancellationToken ct = default)
+    {
         if (count <= 0)
             return;
 
-        var path = codec == TalkCodec.G711A ? "/img/g711a.cgi" : "/img/g711u.cgi";
-        using var client = new TcpClient { NoDelay = true };
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(4));
-        await client.ConnectAsync(_host, _httpPort, timeout.Token).ConfigureAwait(false);
-        var stream = client.GetStream();
-        var token = Convert.ToBase64String(Encoding.ASCII.GetBytes($"{_username}:{_password}"));
-        var header =
-            $"POST {path} HTTP/1.0\r\n" +
-            $"Host: {_host}\r\n" +
-            $"Authorization: Basic {token}\r\n" +
-            "User-Agent: CameraActiveX\r\n" +
-            "Content-Type: application/octet-stream\r\n" +
-            $"Content-Length: {count}\r\n" +
-            "Connection: close\r\n" +
-            "\r\n";
-        await stream.WriteAsync(Encoding.ASCII.GetBytes(header), timeout.Token).ConfigureAwait(false);
-        await stream.WriteAsync(data.AsMemory(0, count), timeout.Token).ConfigureAwait(false);
-        await stream.FlushAsync(timeout.Token).ConfigureAwait(false);
+        using var upload = await OpenTalkUploadAsync(codec, ct).ConfigureAwait(false);
+        await upload.WriteAsync(data.AsMemory(0, count), ct).ConfigureAwait(false);
     }
 
     private string BuildMediaUrl(string scheme, int port, string path)

@@ -100,7 +100,7 @@
                     <Border Classes="card" IsVisible="{Binding IsAudioPage}">
                         <StackPanel Spacing="8">
                             <TextBlock Text="This computer" Classes="section" />
-                            <TextBlock Text="Live Speak on / Speak latch use this microphone. They stay disabled until Speaker out is on and Operation is Talk, Half duplex, or Full duplex."
+                            <TextBlock Text="Live Speak on / Speak latch use this microphone. Test speaker plays a tone on the camera without a local mic. Buttons follow camera Operation: Simplex listen is listen-only; Simplex talk is talk-only; Half duplex mutes live listen while you speak; Full duplex keeps both."
                                        Classes="hint" />
                             <Grid ColumnDefinitions="*,Auto">
                                 <ComboBox ItemsSource="{Binding TalkSettings.Microphones}"

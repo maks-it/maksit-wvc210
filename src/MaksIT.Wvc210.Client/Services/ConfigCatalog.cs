@@ -154,8 +154,13 @@ public static class ConfigCatalog
             Toggle("flip", "Flip"),
             Toggle("mirror", "Mirror"),
             Toggle("video_schedule", "Video schedule"),
-            Toggle("dn_filter", "Day/night filter"),
-            Toggle("night_mode", "Night mode"),
+            Choice("night_mode", "Night mode (unused on WVC210)",
+            [
+                new("0", "Off"),
+                new("1", "On")
+            ], "Present in firmware; this model has no IR-cut CGI. Use White balance → Black & white for a visible night picture."),
+            Toggle("dn_filter", "Day/night IR-cut auto (unused on WVC210)",
+                "PVC2300/WVC2300 leftover. WVC210 night picture is Color balance = Black & white."),
             F("dn_sch", "DN schedule", FieldKind.Text),
             Int("dn_sch_hr", "DN start hour", 0, 23),
             Int("dn_sch_min", "DN start minute", 0, 59),
@@ -220,7 +225,7 @@ public static class ConfigCatalog
             Choice("out_audio_type", "Speaker codec", [new("0", "G.711 A-law"), new("1", "G.711 µ-law")]),
             Choice("operation_mode", "Operation",
             [
-                new("0", "Simplex — listen"), new("1", "Simplex — talk"),
+                new("0", "Simplex listen"), new("1", "Simplex talk"),
                 new("2", "Half duplex"), new("3", "Full duplex")
             ])
         ]),

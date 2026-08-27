@@ -1,8 +1,8 @@
 # MaksIT.Wvc210
 
-![Line Coverage](https://img.shields.io/badge/Line%20Coverage-2.7%25-red)
-![Branch Coverage](https://img.shields.io/badge/Branch%20Coverage-3.3%25-red)
-![Method Coverage](https://img.shields.io/badge/Method%20Coverage-2.7%25-red)
+![Line Coverage](https://img.shields.io/badge/Line%20Coverage-19.6%25-orange)
+![Branch Coverage](https://img.shields.io/badge/Branch%20Coverage-27.2%25-yellow)
+![Method Coverage](https://img.shields.io/badge/Method%20Coverage-21.8%25-yellow)
 ![.NET](https://img.shields.io/badge/.NET-10-512BD4)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue)
 ![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-0078D6)

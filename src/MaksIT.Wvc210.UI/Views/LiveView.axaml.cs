@@ -16,22 +16,21 @@ public partial class LiveView : UserControl
         TalkHoldButton.AddHandler(InputElement.PointerCaptureLostEvent, OnTalkCaptureLost, RoutingStrategies.Bubble, handledEventsToo: true);
     }
 
-    private async void OnVideoPressed(object? sender, PointerPressedEventArgs e)
+    private async void OnPreviewPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (DataContext is not LiveViewModel vm || vm.Frame is null)
+        if (DataContext is not LiveViewModel vm)
             return;
-        if (sender is not Image image)
+        if (sender is not Control surface)
+            return;
+        if (!vm.TryGetPreviewPixelSize(out var bw, out var bh))
             return;
 
-        var point = e.GetPosition(image);
-        var bmp = vm.Frame;
-        var bw = Math.Max(1, bmp.PixelSize.Width);
-        var bh = Math.Max(1, bmp.PixelSize.Height);
-        var scale = Math.Min(image.Bounds.Width / bw, image.Bounds.Height / bh);
+        var point = e.GetPosition(surface);
+        var scale = Math.Min(surface.Bounds.Width / bw, surface.Bounds.Height / bh);
         var dw = bw * scale;
         var dh = bh * scale;
-        var ox = (image.Bounds.Width - dw) / 2.0;
-        var oy = (image.Bounds.Height - dh) / 2.0;
+        var ox = (surface.Bounds.Width - dw) / 2.0;
+        var oy = (surface.Bounds.Height - dh) / 2.0;
         if (point.X < ox || point.Y < oy || point.X > ox + dw || point.Y > oy + dh)
             return;
 

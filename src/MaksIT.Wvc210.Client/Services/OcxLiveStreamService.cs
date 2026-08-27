@@ -1,5 +1,7 @@
+using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Text;
+
 
 namespace MaksIT.Wvc210.Client;
 
@@ -42,25 +44,74 @@ public sealed class OcxLiveStreamService
         var reader = new FrameReader(connection.Stream, connection.Preamble);
         while (!ct.IsCancellationRequested)
         {
-            var header = await reader.ReadExactAsync(48, ct).ConfigureAwait(false);
+            using var frameCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            frameCts.CancelAfter(TimeSpan.FromSeconds(4));
+            var frameToken = frameCts.Token;
+
+            byte[] header;
+            try
+            {
+                header = await reader.ReadExactAsync(48, frameToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new IOException("OCX live stream stalled.");
+            }
+
             if (!IsMagic(header))
             {
-                if (!await reader.ResyncAsync(header, ct).ConfigureAwait(false))
+                if (!await reader.ResyncAsync(header, frameToken).ConfigureAwait(false))
                     throw new IOException("OCX live stream lost MJPG sync.");
                 continue;
             }
 
-            var size = BitConverter.ToInt32(header, 4);
-            if (size <= 0 || size > 2_000_000)
-                throw new IOException("OCX live frame size is invalid.");
-
             var type = header[22];
-            var payload = await reader.ReadExactAsync(size, ct).ConfigureAwait(false);
-            if (type == FrameJpeg)
+            var size = ReadFrameSize(header, 400_000);
+            if (size is null)
+            {
+                if (!await reader.ResyncAsync(header, frameToken).ConfigureAwait(false))
+                    throw new IOException("OCX live frame size is invalid.");
+                continue;
+            }
+
+            byte[] payload;
+            try
+            {
+                payload = await reader.ReadExactAsync(size.Value, frameToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                throw new IOException("OCX live stream stalled.");
+            }
+
+            var looksJpeg = payload.Length >= 2 && payload[0] == 0xFF && payload[1] == 0xD8;
+            if (looksJpeg || type == FrameJpeg)
                 await onJpeg(payload).ConfigureAwait(false);
-            else if (type is FrameG726 or FrameG711)
-                onAudio(type, payload);
+            else
+            {
+                try
+                {
+                    onAudio(type, payload);
+                }
+                catch
+                {
+                    /* keep JPEG flowing if one audio frame fails to decode */
+                }
+            }
         }
+    }
+
+    private static int? ReadFrameSize(byte[] header, int max)
+    {
+        var le = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(4, 4));
+        if (le > 0 && le <= max)
+            return le;
+
+        var be = BinaryPrimitives.ReadInt32BigEndian(header.AsSpan(4, 4));
+        if (be > 0 && be <= max)
+            return be;
+
+        return null;
     }
 
     private static bool IsMagic(byte[] header)

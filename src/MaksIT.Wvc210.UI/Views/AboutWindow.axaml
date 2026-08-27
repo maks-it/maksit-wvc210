@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="420" d:DesignHeight="420"
+        x:Class="MaksIT.Wvc210.UI.Views.AboutWindow"
+        x:DataType="vm:AboutViewModel"
+        Title="About MaksIT.Wvc210"
+        Width="440"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False"
+        Icon="/Assets/avalonia-logo.ico">
+
+    <Border Classes="card" Margin="16">
+        <StackPanel Spacing="10">
+            <TextBlock Text="{Binding Brand}" Classes="kicker" Margin="0" />
+            <TextBlock Text="{Binding ProductName}" Classes="section" FontSize="20" />
+            <TextBlock Text="{Binding Summary}" Classes="hint" />
+
+            <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto"
+                  Margin="0,8,0,0">
+                <TextBlock Text="Version" Foreground="{StaticResource MutedBrush}" />
+                <TextBlock Grid.Column="1" Text="{Binding Version}" FontWeight="SemiBold" />
+
+                <TextBlock Grid.Row="1" Text="Credits" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
+                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding Credits}" Margin="0,8,0,0" />
+
+                <TextBlock Grid.Row="2" Text="Email" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
+                <Button Grid.Row="2" Grid.Column="1" Content="{Binding Email}"
+                        Command="{Binding OpenEmailCommand}" Classes="ghost"
+                        HorizontalAlignment="Left" Padding="8,4" Margin="0,6,0,0" />
+
+                <TextBlock Grid.Row="3" Text="License" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
+                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding License}" Margin="0,8,0,0" />
+
+                <TextBlock Grid.Row="4" Text="Copyright" Foreground="{StaticResource MutedBrush}" Margin="0,8,0,0" />
+                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding Copyright}" Classes="hint" Margin="0,8,0,0" />
+            </Grid>
+
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0">
+                <Button Content="maks-it.com" Command="{Binding OpenSiteCommand}" Classes="ghost" />
+                <Button Content="Close" Click="OnClose" Classes="accent" />
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</Window>

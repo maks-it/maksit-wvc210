@@ -11,4 +11,6 @@ public sealed class AppSettings
     public string VlcPath { get; set; } = "";
     public int PanStep { get; set; } = 8;
     public string MicrophoneId { get; set; } = "";
+    public string LiveStream { get; set; } = nameof(LiveStreamKind.Asf);
+    public string DayNight { get; set; } = nameof(DayNightMode.Auto);
 }
