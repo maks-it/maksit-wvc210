@@ -1,0 +1,97 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        x:Class="MaksIT.Wvc210.UI.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="WVC210 Control"
+        Width="1400" Height="880"
+        MinWidth="1040" MinHeight="680"
+        WindowStartupLocation="CenterScreen"
+        KeyDown="OnKeyDown">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <DockPanel>
+        <Border DockPanel.Dock="Top" Background="{StaticResource BgPanelBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,0,1" Padding="16,12">
+            <StackPanel Spacing="10">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <StackPanel Spacing="1">
+                            <TextBlock Text="CISCO WVC210" FontWeight="Bold" FontSize="16"
+                                       Foreground="{StaticResource AccentBrush}" />
+                            <TextBlock Text="{Binding DeviceSummary}" FontSize="12"
+                                       Foreground="{StaticResource MutedBrush}" />
+                        </StackPanel>
+                        <Border Classes="dot"
+                                Classes.ok="{Binding IsConnected}"
+                                Classes.err="{Binding IsConnectionError}"
+                                Classes.busy="{Binding IsBusy}"
+                                Margin="8,0,0,0" />
+                        <TextBlock Text="{Binding ConnectionStatus}" VerticalAlignment="Center"
+                                   FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <Button Content="Edit connection" Command="{Binding ToggleConnectionPanelCommand}"
+                                Classes="ghost" IsVisible="{Binding IsConnected}" />
+                        <Button Content="Disconnect" Command="{Binding DisconnectCommand}"
+                                IsVisible="{Binding IsConnected}" />
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,80,80,140,160,Auto" IsVisible="{Binding ShowConnectionFields}">
+                    <TextBox PlaceholderText="Host or IP" Text="{Binding Host}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="1" PlaceholderText="HTTP" Text="{Binding HttpPort}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="2" PlaceholderText="RTSP" Text="{Binding RtspPort}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="3" PlaceholderText="User" Text="{Binding Username}" Margin="0,0,8,0" />
+                    <TextBox Grid.Column="4" PlaceholderText="Password" Text="{Binding Password}"
+                             PasswordChar="•" Margin="0,0,8,0" />
+                    <Button Grid.Column="5" Content="Connect" Command="{Binding ConnectCommand}"
+                            Classes="accent" IsVisible="{Binding !IsConnected}" IsEnabled="{Binding !IsBusy}" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <Border DockPanel.Dock="Bottom" Background="{StaticResource BgPanelBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="16,8">
+            <Grid ColumnDefinitions="*,Auto">
+                <Panel>
+                    <TextBlock Text="{Binding Live.Status}" FontSize="12" Foreground="{StaticResource MutedBrush}"
+                               TextTrimming="CharacterEllipsis" IsVisible="{Binding IsLiveSelected}" />
+                    <TextBlock Text="{Binding Setup.Status}" FontSize="12" Foreground="{StaticResource MutedBrush}"
+                               TextTrimming="CharacterEllipsis" IsVisible="{Binding IsSetupSelected}" />
+                    <TextBlock Text="{Binding StatusPage.Status}" FontSize="12" Foreground="{StaticResource MutedBrush}"
+                               TextTrimming="CharacterEllipsis" IsVisible="{Binding IsStatusSelected}" />
+                </Panel>
+                <TextBlock Grid.Column="1" Text="WASD / arrows pan · H home · click image to center"
+                           FontSize="12" Foreground="{StaticResource MutedBrush}"
+                           IsVisible="{Binding IsLiveSelected}" />
+            </Grid>
+        </Border>
+
+        <Border DockPanel.Dock="Left" Width="188" Background="{StaticResource BgPanelBrush}"
+                BorderBrush="{StaticResource LineBrush}" BorderThickness="0,0,1,0" Padding="10,16,12,16">
+            <DockPanel>
+                <TextBlock DockPanel.Dock="Top" Text="CONTROL" Classes="kicker" Margin="8,0,0,8" />
+                <TextBlock DockPanel.Dock="Bottom" Classes="hint" Margin="8,16,4,0"
+                           Text="Live view is the MJPEG preview. Use VLC from that page for MPEG-4 / RTSP." />
+                <StackPanel>
+                    <Button Classes="nav" Classes.selected="{Binding IsLiveSelected}"
+                            Content="Live view" Command="{Binding ShowLiveCommand}" />
+                    <Button Classes="nav" Classes.selected="{Binding IsSetupSelected}"
+                            Content="Setup" Command="{Binding ShowSetupCommand}" />
+                    <Button Classes="nav" Classes.selected="{Binding IsStatusSelected}"
+                            Content="Status" Command="{Binding ShowStatusCommand}" />
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <ContentControl Content="{Binding CurrentPage}" Margin="0" />
+    </DockPanel>
+</Window>

@@ -1,0 +1,135 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+             x:Class="MaksIT.Wvc210.UI.Views.StatusView"
+             x:DataType="vm:StatusViewModel">
+
+    <ScrollViewer Margin="16">
+        <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,12,*">
+                <Border Classes="card">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Device" Classes="section" />
+                        <TextBlock Text="{Binding Status}" Classes="hint" />
+                        <TextBlock Text="Clock" FontSize="12" Foreground="{StaticResource MutedBrush}" />
+                        <TextBlock Text="{Binding CameraClock}" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="Firmware" FontSize="12" Foreground="{StaticResource MutedBrush}" Margin="0,6,0,0" />
+                        <TextBox Text="{Binding SysInfo}" IsReadOnly="True" AcceptsReturn="True" Height="64"
+                                 FontFamily="Consolas,Menlo,monospace" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button Content="Refresh" Command="{Binding ReloadCommand}" Classes="ghost" />
+                            <Button Content="Sync clock from this PC" Command="{Binding SyncClockCommand}" Classes="accent" />
+                            <Button Content="Open web UI" Command="{Binding OpenWebUiCommand}" Classes="ghost" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <Border Grid.Column="2" Classes="card">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Maintenance" Classes="section" />
+                        <TextBlock Text="Routine backups stay in Documents/Wvc210. Danger actions ask for confirmation first."
+                                   Classes="hint" />
+                        <WrapPanel>
+                            <Button Content="Load logs" Command="{Binding LoadLogsCommand}" Classes="ghost" Margin="0,0,8,8" />
+                            <Button Content="Download config" Command="{Binding SaveConfigCommand}" Classes="ghost" Margin="0,0,8,8" />
+                            <Button Content="Restore config" Command="{Binding RequestRestoreCommand}" Classes="ghost" Margin="0,0,8,8" />
+                        </WrapPanel>
+                        <TextBlock Text="Danger zone" FontWeight="SemiBold" Foreground="{StaticResource DangerBrush}" />
+                        <WrapPanel>
+                            <Button Content="Reboot" Command="{Binding RebootCommand}" Classes="danger" Margin="0,0,8,8" />
+                            <Button Content="Upgrade firmware" Command="{Binding RequestFirmwareCommand}" Classes="danger" Margin="0,0,8,8" />
+                            <Button Content="Factory reset" Command="{Binding RequestFactoryResetCommand}" Classes="danger" Margin="0,0,8,8" />
+                        </WrapPanel>
+
+                        <Border IsVisible="{Binding ConfirmRestore}" Background="#2B2414" Padding="12" CornerRadius="8">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Restoring a .cfg file reboots the camera. Use the encoded backup from Download config." TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Choose .cfg file" Command="{Binding RestoreConfigCommand}" Classes="accent" />
+                                    <Button Content="Cancel" Command="{Binding CancelRestoreCommand}" Classes="ghost" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border IsVisible="{Binding ConfirmFirmware}" Background="#2B2414" Padding="12" CornerRadius="8">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="Firmware upgrade can take several minutes. Keep power on and use an official WVC210 image." TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Choose firmware file" Command="{Binding UpgradeFirmwareCommand}" Classes="accent" />
+                                    <Button Content="Cancel" Command="{Binding CancelFirmwareCommand}" Classes="ghost" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border IsVisible="{Binding ConfirmFactoryReset}" Background="#2A1414" Padding="12" CornerRadius="8">
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="This restores factory defaults and reboots the camera." TextWrapping="Wrap" />
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Button Content="Yes, reset" Command="{Binding FactoryResetCommand}" Classes="danger" />
+                                    <Button Content="Cancel" Command="{Binding CancelFactoryResetCommand}" Classes="ghost" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <Border Classes="card">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="Clone to another camera" Classes="section" />
+                    <TextBlock Classes="hint" TextWrapping="Wrap"
+                               Text="This WVC210 firmware does not officially export its flash image. Dump firmware tries the Sercomm download CGI; if the camera refuses, save a clone kit and flash the other WVC210 with a matching WVC210 firmware file, then copy settings." />
+                    <WrapPanel>
+                        <Button Content="Dump firmware image" Command="{Binding DumpFirmwareCommand}"
+                                Classes="accent" Margin="0,0,8,8" IsEnabled="{Binding !IsBusy}" />
+                        <Button Content="Save clone kit (settings)" Command="{Binding SaveCloneKitCommand}"
+                                Classes="ghost" Margin="0,0,8,8" />
+                        <Button Content="Choose firmware file…" Command="{Binding ChooseFirmwareFileCommand}"
+                                Classes="ghost" Margin="0,0,8,8" />
+                    </WrapPanel>
+                    <TextBlock Text="{Binding LastFirmwarePath}" Classes="hint" IsVisible="{Binding HasFirmwarePath}" />
+                    <Grid ColumnDefinitions="*,80,140,160" Margin="0,4,0,0">
+                        <TextBox PlaceholderText="Other camera host or IP" Text="{Binding CloneHost}" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="1" PlaceholderText="HTTP" Text="{Binding CloneHttpPort}" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="2" PlaceholderText="User" Text="{Binding CloneUsername}" Margin="0,0,8,0" />
+                        <TextBox Grid.Column="3" PlaceholderText="Password" Text="{Binding ClonePassword}" PasswordChar="•" />
+                    </Grid>
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <CheckBox IsChecked="{Binding CloneInstallFirmware}" Content="Install firmware image" />
+                        <CheckBox IsChecked="{Binding CloneInstallConfig}" Content="Copy settings" />
+                        <CheckBox IsChecked="{Binding CloneForceModel}" Content="Allow other model" />
+                    </StackPanel>
+                    <Button Content="Install on the other camera" Command="{Binding InstallOnTargetCommand}"
+                            Classes="accent" HorizontalAlignment="Left" IsEnabled="{Binding !IsBusy}" />
+                </StackPanel>
+            </Border>
+
+            <Border Classes="card">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Logs" Classes="section" />
+                    <TextBox Text="{Binding Logs}" IsReadOnly="True" AcceptsReturn="True" Height="180"
+                             FontFamily="Consolas,Menlo,monospace" PlaceholderText="Load logs to inspect camera events." />
+                </StackPanel>
+            </Border>
+
+            <Expander Header="Hardware details" IsExpanded="False">
+                <Border Classes="card" Margin="0,8,0,0">
+                    <TextBox Text="{Binding Capabilities}" IsReadOnly="True" AcceptsReturn="True" Height="200"
+                             FontFamily="Consolas,Menlo,monospace" />
+                </Border>
+            </Expander>
+
+            <Expander Header="Decoded configuration backup" IsExpanded="False">
+                <Border Classes="card" Margin="0,8,0,0">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Download config to save the original .cfg (for restore) and a decoded .txt copy."
+                                   Classes="hint" />
+                        <TextBox Text="{Binding DecodedConfig}" IsReadOnly="True" AcceptsReturn="True" Height="220"
+                                 FontFamily="Consolas,Menlo,monospace" />
+                    </StackPanel>
+                </Border>
+            </Expander>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

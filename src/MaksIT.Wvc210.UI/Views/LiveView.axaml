@@ -1,0 +1,150 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+             x:Class="MaksIT.Wvc210.UI.Views.LiveView"
+             x:DataType="vm:LiveViewModel">
+
+    <Grid ColumnDefinitions="*,360" Margin="16,16,16,12">
+        <Border Classes="card" Padding="0" ClipToBounds="True" Background="#070A0D">
+            <Grid>
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
+                            IsVisible="{Binding !HasFrame}">
+                    <TextBlock Text="No live image" FontSize="16" Opacity="0.55" HorizontalAlignment="Center" />
+                    <TextBlock Text="{Binding Status}" Classes="hint" HorizontalAlignment="Center" MaxWidth="280"
+                               TextAlignment="Center" />
+                </StackPanel>
+                <Image x:Name="VideoImage"
+                       Source="{Binding Frame}"
+                       Stretch="Uniform"
+                       PointerPressed="OnVideoPressed" />
+                <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="12"
+                        Background="#CC0B1014" CornerRadius="16" Padding="10,5"
+                        IsVisible="{Binding IsStreaming}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Border Width="7" Height="7" CornerRadius="4" Background="{StaticResource OkBrush}" />
+                        <TextBlock Text="{Binding StreamMode, StringFormat='{}{0} live'}" Classes="chip" />
+                    </StackPanel>
+                </Border>
+                <Border HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="12"
+                        Background="#CC0B1014" CornerRadius="8" Padding="10,6">
+                    <TextBlock Text="Click a point to center the camera there" Classes="hint" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Column="1" Margin="14,0,0,0">
+            <StackPanel Spacing="12">
+                <Border Classes="card">
+                    <StackPanel Spacing="10">
+                        <TextBlock Text="Pan / tilt" Classes="section" />
+                        <UniformGrid Rows="3" Columns="3" Width="186" HorizontalAlignment="Center">
+                            <RepeatButton Classes="ptz" Content="↖" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="UL" />
+                            <RepeatButton Classes="ptz" Content="↑" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="U" />
+                            <RepeatButton Classes="ptz" Content="↗" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="UR" />
+                            <RepeatButton Classes="ptz" Content="←" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="L" />
+                            <Button Classes="ptz home" Content="⌂" Command="{Binding HomeCommand}"
+                                    ToolTip.Tip="Calibration home" />
+                            <RepeatButton Classes="ptz" Content="→" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="R" />
+                            <RepeatButton Classes="ptz" Content="↙" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="DL" />
+                            <RepeatButton Classes="ptz" Content="↓" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="D" />
+                            <RepeatButton Classes="ptz" Content="↘" Delay="220" Interval="280"
+                                          Command="{Binding NudgeCommand}" CommandParameter="DR" />
+                        </UniformGrid>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Step" VerticalAlignment="Center" Foreground="{StaticResource MutedBrush}" />
+                            <TextBlock Grid.Column="1" Text="{Binding PanStepLabel}" VerticalAlignment="Center"
+                                       FontWeight="SemiBold" />
+                        </Grid>
+                        <Slider Minimum="1" Maximum="20" TickFrequency="1" IsSnapToTickEnabled="True"
+                                Value="{Binding PanStep}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Positions" Classes="section" />
+                        <UniformGrid Columns="2">
+                            <Button Content="User home" Command="{Binding UserHomeCommand}" Margin="0,0,6,6" Classes="ghost" />
+                            <Button Content="Save user home" Command="{Binding SetUserHomeCommand}" Margin="0,0,0,6" Classes="ghost" />
+                            <Button Content="Auto-pan" Command="{Binding AutoPanCommand}" Margin="0,0,6,6" Classes="ghost" />
+                            <Button Content="Patrol" Command="{Binding PatrolCommand}" Margin="0,0,0,6" Classes="ghost" />
+                            <Button Content="Motion area" Command="{Binding MotionPositionCommand}" Margin="0,0,6,0" Classes="ghost" />
+                            <Button Content="Recalibrate" Command="{Binding RecalibrateCommand}" Classes="ghost" />
+                        </UniformGrid>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="Presets" Classes="section" VerticalAlignment="Center" />
+                            <Button Content="Refresh" Command="{Binding RefreshPresetsCommand}" Classes="ghost"
+                                    Padding="10,5" FontSize="12" />
+                        </Grid>
+                        <ItemsControl ItemsSource="{Binding Presets}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:PresetSlotViewModel">
+                                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,0,0,6">
+                                        <TextBlock Text="{Binding Index}" Width="18" VerticalAlignment="Center"
+                                                   Foreground="{StaticResource MutedBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding DisplayName}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" Margin="6,0,8,0" />
+                                        <Button Grid.Column="2" Content="Go" Padding="10,4" Margin="0,0,6,0"
+                                                Command="{Binding $parent[UserControl].((vm:LiveViewModel)DataContext).GoPresetCommand}"
+                                                CommandParameter="{Binding Key}" />
+                                        <Button Grid.Column="3" Content="Save" Padding="10,4" Classes="ghost"
+                                                Command="{Binding $parent[UserControl].((vm:LiveViewModel)DataContext).SetPresetCommand}"
+                                                CommandParameter="{Binding Key}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Speak" Classes="section" />
+                        <TextBlock Text="{Binding AudioStatus}" Classes="hint" />
+                        <ProgressBar Height="8" Minimum="0" Maximum="100" Value="{Binding MicLevel}"
+                                     IsVisible="{Binding IsTalking}" />
+                        <Button x:Name="TalkHoldButton"
+                                Content="Speak on"
+                                Classes="accent"
+                                HorizontalAlignment="Stretch"
+                                IsEnabled="{Binding CanTalk}" />
+                        <Button Content="{Binding TalkLatchLabel}"
+                                Command="{Binding ToggleTalkLatchCommand}"
+                                Classes="ghost"
+                                HorizontalAlignment="Stretch"
+                                IsEnabled="{Binding CanTalk}" />
+                    </StackPanel>
+                </Border>
+
+                <Border Classes="card">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="Capture &amp; VLC" Classes="section" />
+                        <TextBlock Text="In-app preview is MJPEG. Open VLC for the MPEG-4 ASF or RTSP streams."
+                                   Classes="hint" />
+                        <Button Content="Save snapshot" Command="{Binding SaveSnapshotCommand}"
+                                HorizontalAlignment="Stretch" Classes="accent" />
+                        <Button Content="Open ASF in VLC" Command="{Binding OpenAsfCommand}"
+                                HorizontalAlignment="Stretch" Classes="ghost" />
+                        <Button Content="Open RTSP-TCP in VLC" Command="{Binding OpenRtspCommand}"
+                                HorizontalAlignment="Stretch" Classes="ghost" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

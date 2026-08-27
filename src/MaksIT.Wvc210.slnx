@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="MaksIT.Wvc210.Client/MaksIT.Wvc210.Client.csproj" />
+  <Project Path="MaksIT.Wvc210.Shared/MaksIT.Wvc210.Shared.csproj" />
+  <Project Path="MaksIT.Wvc210.UI/MaksIT.Wvc210.UI.csproj" />
+  <Project Path="MaksIT.Wvc210.Tests/MaksIT.Wvc210.Tests.csproj" />
+</Solution>

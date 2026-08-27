@@ -1,0 +1,185 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MaksIT.Wvc210.UI.ViewModels"
+             xmlns:models="using:MaksIT.Wvc210.Shared"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="720"
+             x:Class="MaksIT.Wvc210.UI.Views.SetupView"
+             x:Name="Root"
+             x:DataType="vm:SetupViewModel">
+
+    <Grid ColumnDefinitions="220,*" Margin="16">
+        <Border Classes="card" Padding="10,12" Margin="0,0,14,0">
+            <ScrollViewer>
+                <ItemsControl ItemsSource="{Binding Sections}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SetupSection">
+                            <StackPanel Margin="0,0,0,8">
+                                <TextBlock Text="{Binding Title}" Classes="kicker" />
+                                <ItemsControl ItemsSource="{Binding Items}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SetupNavItem">
+                                            <Button Classes="nav"
+                                                    Classes.selected="{Binding IsSelected}"
+                                                    Content="{Binding Title}"
+                                                    Command="{Binding #Root.((vm:SetupViewModel)DataContext).SelectNavCommand}"
+                                                    CommandParameter="{Binding}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+        </Border>
+
+        <DockPanel Grid.Column="1">
+            <Border DockPanel.Dock="Top" Classes="card" Margin="0,0,0,12">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="{Binding EditorTitle}" Classes="section" />
+                        <TextBlock Text="{Binding EditorDescription}" Classes="hint" />
+                        <TextBlock Text="{Binding Status}" FontSize="12" Margin="0,4,0,0"
+                                   Foreground="{StaticResource AccentBrush}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Top">
+                        <Button Content="Reload" Command="{Binding ReloadCommand}" Classes="ghost" />
+                        <Button Content="Save to camera" Command="{Binding SaveCommand}" Classes="accent" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <ScrollViewer IsVisible="{Binding !IsUsersPage}">
+                <StackPanel Spacing="12">
+                    <Border Classes="card">
+                        <ItemsControl ItemsSource="{Binding Fields}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ConfigFieldViewModel">
+                                    <Grid ColumnDefinitions="220,*" Margin="0,0,0,14">
+                                        <TextBlock Text="{Binding Label}" VerticalAlignment="Top" Margin="0,8,12,0"
+                                                   TextWrapping="Wrap" />
+                                        <StackPanel Grid.Column="1" Spacing="4" MaxWidth="520" HorizontalAlignment="Left">
+                                            <TextBox Text="{Binding Value}"
+                                                     IsReadOnly="{Binding IsReadOnly}"
+                                                     IsVisible="{Binding IsText}" />
+                                            <TextBox Text="{Binding Value}"
+                                                     PasswordChar="•"
+                                                     IsVisible="{Binding IsPassword}" />
+                                            <CheckBox IsChecked="{Binding BoolValue}"
+                                                      Content="On"
+                                                      IsVisible="{Binding IsToggle}" />
+                                            <NumericUpDown Value="{Binding NumberValue}"
+                                                           Minimum="{Binding Min}"
+                                                           Maximum="{Binding Max}"
+                                                           Increment="1"
+                                                           FormatString="0"
+                                                           HorizontalAlignment="Left"
+                                                           Width="180"
+                                                           IsVisible="{Binding IsInteger}" />
+                                            <ComboBox ItemsSource="{Binding Choices}"
+                                                      SelectedItem="{Binding SelectedChoice}"
+                                                      HorizontalAlignment="Stretch"
+                                                      IsVisible="{Binding IsChoice}">
+                                                <ComboBox.ItemTemplate>
+                                                    <DataTemplate x:DataType="models:ChoiceOption">
+                                                        <TextBlock Text="{Binding Label}" />
+                                                    </DataTemplate>
+                                                </ComboBox.ItemTemplate>
+                                            </ComboBox>
+                                            <TextBlock Text="{Binding Hint}" Classes="hint"
+                                                       IsVisible="{Binding HasHint}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Border>
+
+                    <Border Classes="card" IsVisible="{Binding IsAudioPage}">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="This computer" Classes="section" />
+                            <TextBlock Text="Live Speak on / Speak latch use this microphone. They stay disabled until Speaker out is on and Operation is Talk, Half duplex, or Full duplex."
+                                       Classes="hint" />
+                            <Grid ColumnDefinitions="*,Auto">
+                                <ComboBox ItemsSource="{Binding TalkSettings.Microphones}"
+                                          SelectedItem="{Binding TalkSettings.SelectedMicrophone}"
+                                          PlaceholderText="Local microphone">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="models:MicrophoneDevice">
+                                            <TextBlock Text="{Binding Name}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <Button Grid.Column="1" Content="Refresh"
+                                        Command="{Binding TalkSettings.RefreshCommand}"
+                                        Classes="ghost" Margin="8,0,0,0" Padding="10,5" />
+                            </Grid>
+                            <TextBlock Text="{Binding TalkSettings.Status}" Classes="hint" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+
+            <ScrollViewer IsVisible="{Binding IsUsersPage}">
+                <StackPanel Spacing="12">
+                    <Border Classes="card">
+                        <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                            <TextBlock Text="Require login" VerticalAlignment="Center" />
+                            <CheckBox Grid.Column="1" IsChecked="{Binding LoginCheck}" Content="Authentication enabled" />
+                            <TextBlock Grid.Row="1" Text="Admin timeout (min)" VerticalAlignment="Center" />
+                            <NumericUpDown Grid.Row="1" Grid.Column="1" Value="{Binding AdminTimeout}"
+                                           Minimum="0" Maximum="60" FormatString="0"
+                                           HorizontalAlignment="Left" Width="140" Margin="0,6" />
+                            <TextBlock Grid.Row="2" Text="Admin name" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="2" Grid.Column="1" Text="{Binding AdminName}" MaxWidth="360"
+                                     HorizontalAlignment="Left" Margin="0,6" />
+                            <TextBlock Grid.Row="3" Text="Admin password" VerticalAlignment="Center" />
+                            <TextBox Grid.Row="3" Grid.Column="1" Text="{Binding AdminPassword}" PasswordChar="•"
+                                     MaxWidth="360" HorizontalAlignment="Left" Margin="0,6" />
+                        </Grid>
+                    </Border>
+                    <Border Classes="card">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="User slots" Classes="section" />
+                            <Grid ColumnDefinitions="36,*,*,56,70,50,46,64" Margin="0,0,0,4">
+                                <TextBlock Text="#" Classes="hint" />
+                                <TextBlock Grid.Column="1" Text="Username" Classes="hint" />
+                                <TextBlock Grid.Column="2" Text="Password" Classes="hint" />
+                                <TextBlock Grid.Column="3" Text="Mic" Classes="hint" />
+                                <TextBlock Grid.Column="4" Text="Speaker" Classes="hint" />
+                                <TextBlock Grid.Column="5" Text="PTZ" Classes="hint" />
+                                <TextBlock Grid.Column="6" Text="I/O" Classes="hint" />
+                                <TextBlock Grid.Column="7" Text="Admin" Classes="hint" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Users}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:UserSlotViewModel">
+                                        <Grid ColumnDefinitions="36,*,*,56,70,50,46,64" Margin="0,0,0,6">
+                                            <TextBlock Text="{Binding Index}" VerticalAlignment="Center"
+                                                       Foreground="{StaticResource MutedBrush}" />
+                                            <TextBox Grid.Column="1" Text="{Binding Username}" Margin="0,0,8,0" />
+                                            <TextBox Grid.Column="2" Text="{Binding Password}" Margin="0,0,8,0"
+                                                     PasswordChar="•" />
+                                            <CheckBox Grid.Column="3" IsChecked="{Binding AudioIn}"
+                                                      HorizontalAlignment="Center" />
+                                            <CheckBox Grid.Column="4" IsChecked="{Binding AudioOut}"
+                                                      HorizontalAlignment="Center" />
+                                            <CheckBox Grid.Column="5" IsChecked="{Binding PanTilt}"
+                                                      HorizontalAlignment="Center" />
+                                            <CheckBox Grid.Column="6" IsChecked="{Binding IoControl}"
+                                                      HorizontalAlignment="Center" />
+                                            <CheckBox Grid.Column="7" IsChecked="{Binding Admin}"
+                                                      HorizontalAlignment="Center" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Grid>
+</UserControl>

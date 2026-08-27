@@ -1,0 +1,147 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="MaksIT.Wvc210.UI.App"
+             xmlns:local="using:MaksIT.Wvc210.UI"
+             RequestedThemeVariant="Dark">
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+    <Application.Resources>
+        <Color x:Key="AccentColor">#3EC6D4</Color>
+        <Color x:Key="BgApp">#0B0F13</Color>
+        <Color x:Key="BgPanel">#10161C</Color>
+        <Color x:Key="BgCard">#161D24</Color>
+        <Color x:Key="BgInput">#0F141A</Color>
+        <Color x:Key="Line">#2A343C</Color>
+        <Color x:Key="Ok">#3DD68C</Color>
+        <Color x:Key="Warn">#E6B84D</Color>
+        <Color x:Key="Danger">#E25B5B</Color>
+        <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+        <SolidColorBrush x:Key="BgAppBrush" Color="{StaticResource BgApp}" />
+        <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}" />
+        <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
+        <SolidColorBrush x:Key="LineBrush" Color="{StaticResource Line}" />
+        <SolidColorBrush x:Key="OkBrush" Color="{StaticResource Ok}" />
+        <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource Warn}" />
+        <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#8A97A3" />
+    </Application.Resources>
+    <Application.Styles>
+        <FluentTheme />
+
+        <Style Selector="Window">
+            <Setter Property="Background" Value="{StaticResource BgAppBrush}" />
+            <Setter Property="FontSize" Value="13" />
+        </Style>
+
+        <Style Selector="TextBox">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Padding" Value="8,6" />
+        </Style>
+        <Style Selector="ComboBox">
+            <Setter Property="MinHeight" Value="34" />
+        </Style>
+        <Style Selector="NumericUpDown">
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="MinWidth" Value="120" />
+        </Style>
+        <Style Selector="Button">
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+
+        <Style Selector="Border.card">
+            <Setter Property="Background" Value="{StaticResource BgCardBrush}" />
+            <Setter Property="BorderBrush" Value="{StaticResource LineBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="10" />
+            <Setter Property="Padding" Value="16" />
+        </Style>
+
+        <Style Selector="Border.dot">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Height" Value="8" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Background" Value="#5C6770" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.dot.busy">
+            <Setter Property="Background" Value="{StaticResource WarnBrush}" />
+        </Style>
+        <Style Selector="Border.dot.err">
+            <Setter Property="Background" Value="{StaticResource DangerBrush}" />
+        </Style>
+        <Style Selector="Border.dot.ok">
+            <Setter Property="Background" Value="{StaticResource OkBrush}" />
+        </Style>
+
+        <Style Selector="Button.nav">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="3,0,0,0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="CornerRadius" Value="0,6,6,0" />
+        </Style>
+        <Style Selector="Button.nav:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#1A242C" />
+        </Style>
+        <Style Selector="Button.nav.selected">
+            <Setter Property="Background" Value="#163036" />
+            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Foreground" Value="#062126" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.danger">
+            <Setter Property="Background" Value="#3A1A1A" />
+            <Setter Property="Foreground" Value="#FFB4B4" />
+        </Style>
+        <Style Selector="Button.ghost">
+            <Setter Property="Background" Value="#1A232B" />
+        </Style>
+
+        <Style Selector="RepeatButton.ptz, Button.ptz">
+            <Setter Property="Width" Value="54" />
+            <Setter Property="Height" Value="44" />
+            <Setter Property="Margin" Value="3" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+        <Style Selector="Button.ptz.home">
+            <Setter Property="Background" Value="#163036" />
+            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+        </Style>
+
+        <Style Selector="TextBlock.hint">
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="LineHeight" Value="18" />
+        </Style>
+        <Style Selector="TextBlock.section">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="LetterSpacing" Value="0.2" />
+        </Style>
+        <Style Selector="TextBlock.kicker">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{StaticResource MutedBrush}" />
+            <Setter Property="LetterSpacing" Value="1.2" />
+            <Setter Property="Margin" Value="4,10,4,6" />
+        </Style>
+        <Style Selector="TextBlock.chip">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+    </Application.Styles>
+</Application>
