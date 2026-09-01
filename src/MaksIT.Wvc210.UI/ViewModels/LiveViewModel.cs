@@ -529,10 +529,7 @@ public partial class LiveViewModel : ViewModelBase
     private Task HomeAsync() => SafePtz(() => _client.HomeAsync(), "Home (calibration)");
 
     [RelayCommand]
-    private Task UserHomeAsync()
-        => PresetOccupancy.TryGetCoordinates(UserHome, out var x, out var y)
-            ? SafePtz(() => _client.MoveToPositionAsync(x, y), "User home")
-            : SafePtz(() => _client.UserHomeAsync(), "User home");
+    private Task UserHomeAsync() => SafePtz(() => _client.UserHomeAsync(), "User home");
 
     [RelayCommand]
     private async Task SetUserHomeAsync()
@@ -588,7 +585,7 @@ public partial class LiveViewModel : ViewModelBase
             while (!ct.IsCancellationRequested && _sessionActive)
             {
                 var index = indices[step % indices.Count];
-                await GoSavedOrCameraAsync(index, ct).ConfigureAwait(true);
+                await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
                 Status = $"Patrol → {PresetTitle(index)} ({dwell.TotalSeconds:0} s)";
                 step++;
                 await Task.Delay(dwell, ct).ConfigureAwait(true);
@@ -659,8 +656,6 @@ public partial class LiveViewModel : ViewModelBase
             return Task.CompletedTask;
         var slot = PresetByIndex(n);
         var label = slot?.DisplayName ?? ("Preset " + n);
-        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
-            return SafePtz(() => _client.MoveToPositionAsync(x, y), label);
         return SafePtz(() => _client.PresetMoveAsync(n), label);
     }
 
@@ -671,6 +666,13 @@ public partial class LiveViewModel : ViewModelBase
             return;
         await SafePtz(() => _client.PresetSetAsync(n), $"Saved preset {n}").ConfigureAwait(true);
         await RefreshPresetsAsync().ConfigureAwait(true);
+        var slot = PresetByIndex(n);
+        if (slot is not null && !PresetOccupancy.HasCoordinates(slot.Position))
+        {
+            await Task.Delay(400).ConfigureAwait(true);
+            await RefreshPresetsAsync().ConfigureAwait(true);
+        }
+
         PresetByIndex(n)?.MarkSaved();
         NotifySettingsChanged();
     }
@@ -691,7 +693,7 @@ public partial class LiveViewModel : ViewModelBase
         }
         catch
         {
-            // Camera NVRAM is best-effort; local settings are the store.
+            // Camera NVRAM is best-effort; local settings keep occupancy.
         }
 
         slot.ApplyFromCamera("", "");
@@ -708,18 +710,6 @@ public partial class LiveViewModel : ViewModelBase
         }
 
         return null;
-    }
-
-    private async Task GoSavedOrCameraAsync(int index, CancellationToken ct)
-    {
-        var slot = PresetByIndex(index);
-        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
-        {
-            await _client.MoveToPositionAsync(x, y, ct).ConfigureAwait(true);
-            return;
-        }
-
-        await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -751,39 +741,59 @@ public partial class LiveViewModel : ViewModelBase
         if (!_client.IsConfigured) return;
         try
         {
-            var presets = await _client.GetPresetsAsync().ConfigureAwait(true);
-            Dictionary<string, string> ptz;
+            var ptz = await ReadAndMergePresetsAsync().ConfigureAwait(true);
             try
             {
-                ptz = await _client.GetGroupAsync("PTZ").ConfigureAwait(true);
+                if (ptz is not null
+                    && await _client.RestoreMissingPresetsAsync(ptz, ExportPresets(), UserHome)
+                        .ConfigureAwait(true))
+                    await ReadAndMergePresetsAsync().ConfigureAwait(true);
             }
             catch
             {
-                ptz = [];
+                // Restore write is only for a wiped camera; local occupancy is still kept.
             }
 
-            foreach (var slot in Presets)
-            {
-                presets.TryGetValue("PT" + slot.Index, out var ptName);
-                ptz.TryGetValue("Preset" + slot.Index + "Name", out var groupName);
-                ptz.TryGetValue("Preset" + slot.Index + "Position", out var cameraPosition);
-                var cameraName = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
-                var (name, position) = PresetOccupancy.MergeWithCamera(
-                    slot.Name, slot.Position, cameraName, cameraPosition);
-                slot.ApplyFromCamera(name, position);
-            }
-
-            if (ptz.TryGetValue("PredefineHome", out var cameraHome)
-                && PresetOccupancy.HasCoordinates(cameraHome))
-                UserHome = cameraHome.Trim();
-
-            PresetNames = "Presets stored on this PC (kept after camera reboot).";
+            PresetNames = "Presets on the camera (this PC keeps a backup after reboot).";
             NotifySettingsChanged();
         }
         catch (Exception ex)
         {
             PresetNames = "Using stored presets (camera list unavailable): " + ex.Message;
         }
+    }
+
+    /// <returns>The PTZ group when it loaded; otherwise null (do not restore).</returns>
+    private async Task<Dictionary<string, string>?> ReadAndMergePresetsAsync()
+    {
+        var presets = await _client.GetPresetsAsync().ConfigureAwait(true);
+        Dictionary<string, string>? ptz = null;
+        try
+        {
+            ptz = await _client.GetGroupAsync("PTZ").ConfigureAwait(true);
+        }
+        catch
+        {
+            /* occupancy still merges from preset=all + local backup */
+        }
+
+        var map = ptz ?? [];
+        foreach (var slot in Presets)
+        {
+            presets.TryGetValue("PT" + slot.Index, out var ptName);
+            map.TryGetValue("Preset" + slot.Index + "Name", out var groupName);
+            map.TryGetValue("Preset" + slot.Index + "Position", out var cameraPosition);
+            var cameraName = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
+            var (name, position) = PresetOccupancy.MergeWithCamera(
+                slot.Name, slot.Position, cameraName, cameraPosition);
+            slot.ApplyFromCamera(name, position);
+        }
+
+        if (map.TryGetValue("PredefineHome", out var cameraHome)
+            && PresetOccupancy.HasCoordinates(cameraHome))
+            UserHome = cameraHome.Trim();
+
+        return ptz;
     }
 
     private async Task SafePtz(Func<Task> action, string ok)

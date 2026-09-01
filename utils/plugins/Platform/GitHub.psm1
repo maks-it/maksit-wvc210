@@ -101,7 +101,6 @@ function Invoke-Plugin {
 
     $pluginSettings = $Settings
     $sharedSettings = $Settings.context
-    $githubSecret = Resolve-PluginSecretName -PluginSettings $pluginSettings -PropertyName 'githubSecret'
     $configuredRepository = $pluginSettings.repository
     $releaseNotesFileSetting = $pluginSettings.releaseNotesFile
     $releaseTitlePatternSetting = $pluginSettings.releaseTitlePattern
@@ -138,13 +137,9 @@ function Invoke-Plugin {
 
     Assert-Command gh
 
-    if ([string]::IsNullOrWhiteSpace($githubSecret)) {
-        throw "GitHub plugin requires 'githubSecret' in scriptSettings.json (logical secret name, e.g. GitHub)."
-    }
-
-    $ghToken = Get-SecretEnvironmentValue -Name $githubSecret
+    $ghToken = Get-RepoUtilsSecretSlot -Name 'GitClone' -Settings $sharedSettings
     if ([string]::IsNullOrWhiteSpace($ghToken)) {
-        throw "GitHub token is not set. Set environment variable '$githubSecret'."
+        throw "GitHub token is not set. Set RepoUtilsSecrets slot 'GitClone'."
     }
 
     if ([string]::IsNullOrWhiteSpace($releaseNotesFileSetting)) {
@@ -218,7 +213,7 @@ function Invoke-Plugin {
             Write-Log -Level "INFO" -Message "  gh version: $($ghVersion[0])"
         }
 
-        Write-Log -Level "INFO" -Message "  Auth secret: $githubSecret"
+        Write-Log -Level "INFO" -Message "  Auth secret: GitClone"
 
         $authArgs = @("api", "repos/$repo", "--jq", ".full_name")
         $authOutput = & gh @authArgs 2>&1
@@ -235,7 +230,7 @@ function Invoke-Plugin {
                 $authStatus | ForEach-Object { Write-Log -Level "WARN" -Message "    $_" }
             }
 
-            throw "GitHub CLI authentication failed for repository '$repo'. Ensure secret '$githubSecret' is valid and has access to this repository."
+            throw "GitHub CLI authentication failed for repository '$repo'. Ensure RepoUtilsSecrets slot 'GitClone' is valid and has access to this repository."
         }
 
         Write-Log -Level "OK" -Message "  GitHub token validated for repository: $($authOutput | Select-Object -First 1)"

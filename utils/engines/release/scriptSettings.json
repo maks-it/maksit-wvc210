@@ -100,7 +100,6 @@
       "name": "GitHub",
       "stageLabel": "release",
       "enabled": true,
-      "githubSecret": "GitHub",
       "repository": "",
       "releaseNotesFile": "..\\..\\..\\CHANGELOG.md",
       "releaseTitlePattern": "Release {version}",
@@ -119,5 +118,8 @@
         "*.flatpak"
       ]
     }
-  ]
+  ],
+  "repoUtilsSecretsShared": "RepoUtilsSecretsShared",
+  "repoUtilsSecrets": "RepoUtilsSecrets",
+  "vaultRepoUtilsApplication": "Shared"
 }

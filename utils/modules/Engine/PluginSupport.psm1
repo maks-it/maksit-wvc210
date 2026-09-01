@@ -294,72 +294,373 @@ function Test-PluginMutatesRemote {
     return $false
 }
 
-function Get-SecretEnvironmentValue {
+function Get-RepoUtilsEnvironmentVariable {
     <#
     .SYNOPSIS
-        Reads a secret value from an environment variable by logical name.
+        Reads a named environment variable from Process, then Windows User, then Machine.
 
     .DESCRIPTION
-        Plugins never store secret material in scriptSettings.json. Settings hold a
-        logical name (e.g. "GitHub", "NuGet"); the process environment variable with
-        that same name must be set before the engine runs.
-
-    .PARAMETER Name
-        Logical secret name — also the environment variable name to read.
-
-    .OUTPUTS
-        System.String. The environment variable value, or $null when unset.
-
-    .EXAMPLE
-        $token = Get-SecretEnvironmentValue -Name 'GitHub'
+        Process wins (CICD sandbox inject, `$env:Name`, explicit session values). When the
+        current process was started before a User-level pack was set, User/Machine still
+        apply so laptop releases do not require a new shell. An explicit process value —
+        including empty JSON `{}` — shadows User/Machine.
     #>
     param(
         [Parameter(Mandatory = $true)]
         [string]$Name
     )
 
-    return [Environment]::GetEnvironmentVariable($Name)
-}
+    if ([string]::IsNullOrWhiteSpace($Name)) {
+        throw "Environment variable name is required."
+    }
 
-function Resolve-PluginSecretName {
-    <#
-    .SYNOPSIS
-        Resolves a logical secret name from a plugin's scriptSettings entry.
+    $processValue = [Environment]::GetEnvironmentVariable($Name, 'Process')
+    # Empty string is what SetEnvironmentVariable($null, Process) leaves behind;
+    # treat it as unset so Windows User packs still apply. Explicit '{}' shadows User.
+    if (-not [string]::IsNullOrWhiteSpace($processValue)) {
+        return $processValue
+    }
 
-    .DESCRIPTION
-        Reads a string property such as githubSecret / nugetSecret / npmSecret /
-        containerRegistrySecret from the plugin settings object. Returns $null when
-        the property is missing or blank.
+    foreach ($target in @('User', 'Machine')) {
+        try {
+            $value = [Environment]::GetEnvironmentVariable($Name, $target)
+        }
+        catch {
+            continue
+        }
 
-    .PARAMETER PluginSettings
-        Plugin settings object from scriptSettings.json (the enabled plugin entry).
-
-    .PARAMETER PropertyName
-        Settings property that holds the logical secret name (e.g. 'githubSecret').
-
-    .OUTPUTS
-        System.String. Trimmed logical secret name, or $null.
-
-    .EXAMPLE
-        $name = Resolve-PluginSecretName -PluginSettings $plugin -PropertyName 'nugetSecret'
-        $key  = Get-SecretEnvironmentValue -Name $name
-    #>
-    param(
-        [Parameter(Mandatory = $true)]
-        $PluginSettings,
-
-        [Parameter(Mandatory = $true)]
-        [string]$PropertyName
-    )
-
-    if ($PluginSettings.PSObject.Properties.Name -contains $PropertyName) {
-        $value = [string]$PluginSettings.$PropertyName
         if (-not [string]::IsNullOrWhiteSpace($value)) {
-            return $value.Trim()
+            return $value
         }
     }
 
     return $null
+}
+
+function Get-RepoUtilsSecretsEnvNames {
+    <#
+    .SYNOPSIS
+        Reads declared pack environment variable names from scriptSettings / engine context.
+    #>
+    param(
+        [Parameter(Mandatory = $false)]
+        $Settings
+    )
+
+    $sharedName = $null
+    $packName = $null
+    if ($null -ne $Settings) {
+        if ($Settings.PSObject.Properties.Name -contains 'repoUtilsSecretsShared') {
+            $sharedName = [string]$Settings.repoUtilsSecretsShared
+        }
+
+        if ($Settings.PSObject.Properties.Name -contains 'repoUtilsSecrets') {
+            $packName = [string]$Settings.repoUtilsSecrets
+        }
+    }
+
+    $sharedName = if ($null -eq $sharedName) { '' } else { $sharedName.Trim() }
+    $packName = if ($null -eq $packName) { '' } else { $packName.Trim() }
+    if ([string]::IsNullOrWhiteSpace($sharedName) -or [string]::IsNullOrWhiteSpace($packName)) {
+        throw "scriptSettings.json must declare repoUtilsSecretsShared and repoUtilsSecrets (environment variable names, e.g. RepoUtilsSecretsShared / RepoUtilsSecrets)."
+    }
+
+    return [pscustomobject]@{
+        SharedEnv = $sharedName
+        PackEnv   = $packName
+    }
+}
+
+function ConvertFrom-RepoUtilsSecretsPackJson {
+    <#
+    .SYNOPSIS
+        Parses a RepoUtilsSecrets JSON object. Empty input is {}. Bare non-JSON throws.
+    #>
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowEmptyString()]
+        [string]$Raw,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SourceName
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Raw)) {
+        return [pscustomobject]@{}
+    }
+
+    $trimmed = $Raw.Trim()
+    if (-not $trimmed.StartsWith('{')) {
+        throw "${SourceName} must be a JSON object (RepoUtilsSecrets pack), not a bare string."
+    }
+
+    try {
+        $parsed = $trimmed | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "${SourceName} is not valid JSON: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $parsed -or $parsed -is [System.Collections.IEnumerable]) {
+        throw "${SourceName} JSON must be an object."
+    }
+
+    return $parsed
+}
+
+function ConvertTo-OrdinalPropertyMap {
+    param($Object)
+
+    $map = [System.Collections.Generic.Dictionary[string, object]]::new([System.StringComparer]::Ordinal)
+    if ($null -eq $Object) {
+        return $map
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Object.Keys)) {
+            $name = [string]$key
+            if ([string]::IsNullOrWhiteSpace($name)) {
+                continue
+            }
+
+            $map[$name] = $Object[$key]
+        }
+
+        return $map
+    }
+
+    foreach ($property in $Object.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        $map[[string]$property.Name] = $property.Value
+    }
+
+    return $map
+}
+
+function ConvertFrom-OrdinalPropertyMap {
+    param(
+        [Parameter(Mandatory = $true)]
+        [System.Collections.Generic.Dictionary[string, object]]$Map
+    )
+
+    $properties = [ordered]@{}
+    foreach ($key in $Map.Keys) {
+        $properties[$key] = $Map[$key]
+    }
+
+    return [pscustomobject]$properties
+}
+
+function Merge-RepoUtilsSecretsPackObjects {
+    <#
+    .SYNOPSIS
+        Appsettings-style merge: org-pack first, slug overlay. Nested merge only for ContainerRegistry.
+    #>
+    param(
+        $Base,
+        $Overlay
+    )
+
+    $result = ConvertTo-OrdinalPropertyMap -Object $Base
+    $overlayMap = ConvertTo-OrdinalPropertyMap -Object $Overlay
+    foreach ($key in @($overlayMap.Keys)) {
+        if (-not (Test-ContainerRegistryCatalogKey -Key $key)) {
+            throw "RepoUtilsSecrets pack key '$key' must be PascalCase (e.g. GitClone, ContainerRegistry)."
+        }
+
+        if ([string]::Equals($key, 'ContainerRegistry', [System.StringComparison]::Ordinal)) {
+            $overlayCatalog = $overlayMap[$key]
+            if ($null -eq $overlayCatalog -or ($overlayCatalog -is [string] -and [string]::IsNullOrWhiteSpace([string]$overlayCatalog))) {
+                continue
+            }
+
+            if ($overlayCatalog -is [string] -or $overlayCatalog -is [ValueType] -or $overlayCatalog -is [System.Collections.IEnumerable]) {
+                throw "RepoUtilsSecrets pack slot 'ContainerRegistry' must be a JSON object of PascalCase keys."
+            }
+
+            $baseCatalog = $null
+            if ($result.ContainsKey('ContainerRegistry')) {
+                $baseCatalog = $result['ContainerRegistry']
+            }
+
+            $mergedCatalog = ConvertTo-OrdinalPropertyMap -Object $baseCatalog
+            $overlayCatalogMap = ConvertTo-OrdinalPropertyMap -Object $overlayCatalog
+            foreach ($catalogKey in @($overlayCatalogMap.Keys)) {
+                if (-not (Test-ContainerRegistryCatalogKey -Key $catalogKey)) {
+                    throw "Catalog key '$catalogKey' in ContainerRegistry must be PascalCase (e.g. Harbor, InCluster)."
+                }
+
+                $mergedCatalog[$catalogKey] = $overlayCatalogMap[$catalogKey]
+            }
+
+            $result['ContainerRegistry'] = ConvertFrom-OrdinalPropertyMap -Map $mergedCatalog
+            continue
+        }
+
+        $result[$key] = $overlayMap[$key]
+    }
+
+    foreach ($key in @($result.Keys)) {
+        if (-not (Test-ContainerRegistryCatalogKey -Key $key)) {
+            throw "RepoUtilsSecrets pack key '$key' must be PascalCase (e.g. GitClone, ContainerRegistry)."
+        }
+    }
+
+    return ConvertFrom-OrdinalPropertyMap -Map $result
+}
+
+function Get-MergedRepoUtilsSecretsPack {
+    <#
+    .SYNOPSIS
+        Merges $env:RepoUtilsSecretsShared then $env:RepoUtilsSecrets (names from settings).
+    #>
+    param(
+        [Parameter(Mandatory = $false)]
+        $Settings
+    )
+
+    $names = Get-RepoUtilsSecretsEnvNames -Settings $Settings
+    $sharedRaw = Get-RepoUtilsEnvironmentVariable -Name $names.SharedEnv
+    $packRaw = Get-RepoUtilsEnvironmentVariable -Name $names.PackEnv
+    $sharedObject = ConvertFrom-RepoUtilsSecretsPackJson -Raw $sharedRaw -SourceName $names.SharedEnv
+    $packObject = ConvertFrom-RepoUtilsSecretsPackJson -Raw $packRaw -SourceName $names.PackEnv
+    return Merge-RepoUtilsSecretsPackObjects -Base $sharedObject -Overlay $packObject
+}
+
+function Get-RepoUtilsSecretSlot {
+    <#
+    .SYNOPSIS
+        Reads a scalar pack slot (GitClone, NuGet, Npm, CosignKey, …) after merge.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name,
+
+        [Parameter(Mandatory = $false)]
+        $Settings,
+
+        [switch]$AllowMissing
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name) -or -not (Test-ContainerRegistryCatalogKey -Key $Name)) {
+        throw "RepoUtilsSecrets slot '$Name' must be PascalCase (e.g. GitClone, NuGet)."
+    }
+
+    $merged = Get-MergedRepoUtilsSecretsPack -Settings $Settings
+    $match = $null
+    foreach ($property in $merged.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        if ([string]::Equals([string]$property.Name, $Name, [System.StringComparison]::Ordinal)) {
+            $match = $property
+            break
+        }
+    }
+
+    if ($null -eq $match) {
+        if ($AllowMissing) {
+            return $null
+        }
+
+        throw "RepoUtilsSecrets slot '$Name' is missing after merging org-pack and slug-pack."
+    }
+
+    $value = $match.Value
+    if ($value -is [string] -or $null -eq $value -or $value -is [ValueType]) {
+        $text = if ($null -eq $value) { '' } else { [string]$value }
+        if ([string]::IsNullOrWhiteSpace($text) -and -not $AllowMissing) {
+            throw "RepoUtilsSecrets slot '$Name' is empty."
+        }
+
+        if ([string]::IsNullOrWhiteSpace($text)) {
+            return $null
+        }
+
+        return $text
+    }
+
+    throw "RepoUtilsSecrets slot '$Name' must be a string (nested maps are only allowed for ContainerRegistry)."
+}
+
+function Copy-RepoUtilsSecretsEnvNamesToContext {
+    param(
+        [Parameter(Mandatory = $true)]
+        $Context,
+
+        [Parameter(Mandatory = $false)]
+        $Settings
+    )
+
+    if ($null -eq $Settings) {
+        return $Context
+    }
+
+    foreach ($name in @('repoUtilsSecretsShared', 'repoUtilsSecrets', 'vaultRepoUtilsApplication')) {
+        if ($Settings.PSObject.Properties.Name -contains $name -and -not [string]::IsNullOrWhiteSpace([string]$Settings.$name)) {
+            $Context | Add-Member -NotePropertyName $name -NotePropertyValue ([string]$Settings.$name).Trim() -Force
+        }
+    }
+
+    return $Context
+}
+
+function Assert-RetiredPluginSecretSettingsAbsent {
+    <#
+    .SYNOPSIS
+        Throws when leftover plugin *Secret / gitCloneKey settings are present.
+    #>
+    param(
+        $Object,
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    if ($null -eq $Object -or $Object -is [string] -or $Object -is [ValueType]) {
+        return
+    }
+
+    if ($Object -is [System.Collections.IDictionary]) {
+        foreach ($key in @($Object.Keys)) {
+            $name = [string]$key
+            if ($name -like '*Secret' -or [string]::Equals($name, 'gitCloneKey', [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw "${Context}: '$name' is not supported. Use RepoUtilsSecrets pack slots (GitClone, NuGet, Npm, ContainerRegistry, CosignKey)."
+            }
+
+            Assert-RetiredPluginSecretSettingsAbsent -Object $Object[$key] -Context $Context
+        }
+
+        return
+    }
+
+    if ($Object -is [System.Collections.IEnumerable]) {
+        foreach ($item in @($Object)) {
+            Assert-RetiredPluginSecretSettingsAbsent -Object $item -Context $Context
+        }
+
+        return
+    }
+
+    if ($null -eq $Object.PSObject) {
+        return
+    }
+
+    foreach ($property in $Object.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        $name = [string]$property.Name
+        if ($name -like '*Secret' -or [string]::Equals($name, 'gitCloneKey', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "${Context}: '$name' is not supported. Use RepoUtilsSecrets pack slots (GitClone, NuGet, Npm, ContainerRegistry, CosignKey)."
+        }
+
+        Assert-RetiredPluginSecretSettingsAbsent -Object $property.Value -Context $Context
+    }
 }
 
 function Test-ContainerRegistryCatalogKey {
@@ -441,34 +742,37 @@ function ConvertFrom-RegistryCredentialPayload {
 function Get-ContainerRegistryCatalogObject {
     <#
     .SYNOPSIS
-        Parses SecretName env as a PascalCase JSON map of Base64(username:password) values.
+        Validates a PascalCase JSON map of Base64(username:password) values.
     #>
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Raw,
+        $Catalog,
 
-        [Parameter(Mandatory = $true)]
-        [string]$SecretName
+        [Parameter(Mandatory = $false)]
+        [string]$SourceName = 'ContainerRegistry'
     )
 
-    $trimmed = $Raw.Trim()
-    if (-not $trimmed.StartsWith('{')) {
-        throw "Environment variable '$SecretName' must be a JSON catalog object { `"Harbor`": `"<Base64>`", `"InCluster`": `"<Base64>`" }."
+    if ($Catalog -is [string]) {
+        $raw = [string]$Catalog
+        $trimmed = $raw.Trim()
+        if (-not $trimmed.StartsWith('{')) {
+            throw "$SourceName must be a JSON catalog object { `"Harbor`": `"<Base64>`", `"InCluster`": `"<Base64>`" }."
+        }
+
+        try {
+            $Catalog = $trimmed | ConvertFrom-Json -ErrorAction Stop
+        }
+        catch {
+            throw "$SourceName is not valid JSON: $($_.Exception.Message)"
+        }
     }
 
-    try {
-        $parsed = $trimmed | ConvertFrom-Json -ErrorAction Stop
-    }
-    catch {
-        throw "Environment variable '$SecretName' is not valid JSON: $($_.Exception.Message)"
-    }
-
-    if ($null -eq $parsed -or $parsed -is [System.Collections.IEnumerable]) {
-        throw "Environment variable '$SecretName' JSON catalog must be an object of PascalCase keys to Base64(username:password)."
+    if ($null -eq $Catalog -or $Catalog -is [string] -or $Catalog -is [ValueType] -or $Catalog -is [System.Collections.IEnumerable]) {
+        throw "$SourceName JSON catalog must be an object of PascalCase keys to Base64(username:password)."
     }
 
     $keyCount = 0
-    foreach ($property in $parsed.PSObject.Properties) {
+    foreach ($property in $Catalog.PSObject.Properties) {
         if ($property.MemberType -notin @('NoteProperty', 'Property')) {
             continue
         }
@@ -476,48 +780,36 @@ function Get-ContainerRegistryCatalogObject {
         $keyCount++
         $keyName = [string]$property.Name
         if (-not (Test-ContainerRegistryCatalogKey -Key $keyName)) {
-            throw "Catalog key '$keyName' in '$SecretName' must be PascalCase (e.g. Harbor, InCluster)."
+            throw "Catalog key '$keyName' in '$SourceName' must be PascalCase (e.g. Harbor, InCluster)."
         }
     }
 
     if ($keyCount -eq 0) {
-        throw "Environment variable '$SecretName' JSON catalog has no PascalCase keys."
+        throw "$SourceName JSON catalog has no PascalCase keys."
     }
 
-    return $parsed
+    return $Catalog
 }
 
 function Get-RegistryCredentialsFromRuntime {
     <#
     .SYNOPSIS
-        Loads container-registry username/password from a JSON catalog env var.
+        Loads container-registry username/password from the merged RepoUtilsSecrets pack.
 
     .DESCRIPTION
-        Looks up the environment variable named by SecretName.
-        Value is a JSON object { "Harbor": "<Base64(user:pass)>", "InCluster": "..." }.
-        -Key (PascalCase, ordinal match) selects an entry.
-
-    .PARAMETER SecretName
-        Logical secret name (environment variable name), not a password or token.
+        Reads nested ContainerRegistry { "Harbor": "<Base64(user:pass)>", "InCluster": "..." }
+        after org-pack + slug-pack merge. -Key (PascalCase, ordinal match) selects an entry.
 
     .PARAMETER Key
         PascalCase catalog key (e.g. Harbor). Required.
 
     .PARAMETER SharedSettings
-        Optional engine shared context (reserved for callers that thread context).
+        Engine shared context (must declare repoUtilsSecretsShared / repoUtilsSecrets).
 
     .OUTPUTS
         Hashtable with User and Password keys (decoded credential material).
     #>
-    [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
-        'PSAvoidUsingPlainTextForPassword',
-        'SecretName',
-        Justification = 'Logical secret name for env lookup (JSON catalog of Base64 username:password); not a credential value.'
-    )]
     param(
-        [Parameter(Mandatory = $true)]
-        [string]$SecretName,
-
         [Parameter(Mandatory = $true)]
         [string]$Key,
 
@@ -525,20 +817,32 @@ function Get-RegistryCredentialsFromRuntime {
         [psobject]$SharedSettings
     )
 
-    $raw = Get-SecretEnvironmentValue -Name $SecretName
-    if ([string]::IsNullOrWhiteSpace($raw)) {
-        throw "Environment variable '$SecretName' is not set."
-    }
-
     if ([string]::IsNullOrWhiteSpace($Key)) {
-        throw "Pass -Key (PascalCase, e.g. Harbor) to select an entry in '$SecretName'."
+        throw "Pass -Key (PascalCase, e.g. Harbor) to select an entry in ContainerRegistry."
     }
 
     if (-not (Test-ContainerRegistryCatalogKey -Key $Key)) {
         throw "containerRegistryKey '$Key' must be PascalCase (e.g. Harbor, InCluster)."
     }
 
-    $catalog = Get-ContainerRegistryCatalogObject -Raw $raw -SecretName $SecretName
+    $merged = Get-MergedRepoUtilsSecretsPack -Settings $SharedSettings
+    $catalogProperty = $null
+    foreach ($property in $merged.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        if ([string]::Equals([string]$property.Name, 'ContainerRegistry', [System.StringComparison]::Ordinal)) {
+            $catalogProperty = $property
+            break
+        }
+    }
+
+    if ($null -eq $catalogProperty -or $null -eq $catalogProperty.Value) {
+        throw "RepoUtilsSecrets slot 'ContainerRegistry' is missing after merging org-pack and slug-pack."
+    }
+
+    $catalog = Get-ContainerRegistryCatalogObject -Catalog $catalogProperty.Value -SourceName 'ContainerRegistry'
 
     $match = $null
     foreach ($property in $catalog.PSObject.Properties) {
@@ -553,15 +857,15 @@ function Get-RegistryCredentialsFromRuntime {
     }
 
     if ($null -eq $match) {
-        throw "Catalog key '$Key' was not found in '$SecretName' (ordinal PascalCase match)."
+        throw "Catalog key '$Key' was not found in ContainerRegistry (ordinal PascalCase match)."
     }
 
     $payload = [string]$match.Value
     if ([string]::IsNullOrWhiteSpace($payload)) {
-        throw "Catalog key '$Key' in '$SecretName' is empty."
+        throw "Catalog key '$Key' in ContainerRegistry is empty."
     }
 
-    return ConvertFrom-RegistryCredentialPayload -Payload $payload -ContextName "${SecretName}.${Key}"
+    return ConvertFrom-RegistryCredentialPayload -Payload $payload -ContextName "ContainerRegistry.$Key"
 }
 
 function Resolve-EngineDirectoryFromSharedSettings {
@@ -902,4 +1206,4 @@ function Invoke-ConfiguredPlugin {
     }
 }
 
-Export-ModuleMember -Function Import-PluginDependency, Get-ConfiguredPlugins, Get-PluginStageLabel, Get-PluginBranches, Get-PluginMetadataObject, Test-PluginCompatible, Test-PluginMutatesRemote, Resolve-PluginSecretName, Get-SecretEnvironmentValue, Test-ContainerRegistryCatalogKey, Assert-RetiredContainerRegistrySettingsAbsent, Get-ContainerRegistryCatalogObject, Get-RegistryCredentialsFromRuntime, Test-PluginSkipsRemoteMutation, Test-IsPublishPlugin, Get-PluginSettingValue, Get-PluginPathListSetting, Get-PluginPathSetting, Get-ArchiveNamePattern, Resolve-PluginModulePath, Test-PluginRunnable, New-PluginInvocationSettings, Invoke-ConfiguredPlugin
+Export-ModuleMember -Function Import-PluginDependency, Get-ConfiguredPlugins, Get-PluginStageLabel, Get-PluginBranches, Get-PluginMetadataObject, Test-PluginCompatible, Test-PluginMutatesRemote, Get-RepoUtilsEnvironmentVariable, Get-RepoUtilsSecretsEnvNames, ConvertFrom-RepoUtilsSecretsPackJson, Merge-RepoUtilsSecretsPackObjects, Get-MergedRepoUtilsSecretsPack, Get-RepoUtilsSecretSlot, Copy-RepoUtilsSecretsEnvNamesToContext, Assert-RetiredPluginSecretSettingsAbsent, Test-ContainerRegistryCatalogKey, Assert-RetiredContainerRegistrySettingsAbsent, Get-ContainerRegistryCatalogObject, Get-RegistryCredentialsFromRuntime, Test-PluginSkipsRemoteMutation, Test-IsPublishPlugin, Get-PluginSettingValue, Get-PluginPathListSetting, Get-PluginPathSetting, Get-ArchiveNamePattern, Resolve-PluginModulePath, Test-PluginRunnable, New-PluginInvocationSettings, Invoke-ConfiguredPlugin

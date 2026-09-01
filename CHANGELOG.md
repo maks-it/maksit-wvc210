@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-01
+
+### Fixed
+
+- **Go**, **Patrol**, and **User home** use camera `preset=move` again. 1.2.0 sent stored X,Y as `position=` click offsets, so patrol did not reach the saved poses.
+- AppData still keeps occupancy and last X,Y. On connect, NVRAM is written only when those slots are empty (camera reboot); an intact camera is left alone. **Save** still uses `preset=set`; **Delete** clears that slot and updates the patrol sequence in the same write.
+
 ## [1.2.0] - 2026-09-01
 
 ### Added

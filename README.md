@@ -39,7 +39,7 @@ dotnet build MaksIT.Wvc210.slnx
 dotnet run --project MaksIT.Wvc210.UI
 ```
 
-Operator settings (host, pan step, live stream, presets, user home) are written to `%AppData%/MaksIT/WVC210/settings.json` (same product folder as WiX: `Program Files\MaksIT\WVC210`). `src/MaksIT.Wvc210.Shared/appsettings.json` is seed defaults only (copied next to the exe, never written).
+Operator settings (host, pan step, live stream, preset occupancy/backup, user home) are written to `%AppData%/MaksIT/WVC210/settings.json` (same product folder as WiX: `Program Files\MaksIT\WVC210`). Preset poses are stored on the camera; AppData is used to restore empty NVRAM after a reboot. `src/MaksIT.Wvc210.Shared/appsettings.json` is seed defaults only (copied next to the exe, never written).
 
 ## Tests
 
