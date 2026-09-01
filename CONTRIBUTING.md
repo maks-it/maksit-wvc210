@@ -29,6 +29,8 @@ Coverage shields in `README.md` are rewritten by **CoverageBadges**.
 2. Commit on `main`, tag `v{version}` on HEAD (`v1.2.3` or SemVer prerelease such as `v0.1.0-alpha.1`).
 3. Run `utils\Invoke-ReleasePackage.bat`.
 
+Flathub is a separate, from-source submission. After tagging, follow [flatpak/README.md](flatpak/README.md). Do not open the Flathub PR with an AI agent.
+
 ## Commit format
 
 ```text

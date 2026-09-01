@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-01
+
+### Fixed
+
+- Flatpak AppStream version is the same shared release version as zip and MSI (`DotNetReleaseVersion` from the UI csproj / `Directory.Build.props`), so `flatpak info` matches the bundle file name.
+- Linux Flatpak GNOME app icon uses X11/XWayland (`UsePlatformDetect` only). Avalonia 12.1.2 native Wayland still hangs on GNOME `xdg_toplevel.configure(0, 0)` (empty glass thumbnail). `--socket=x11` remains required; `--socket=wayland` is unused until that is fixed. Desktop and icons are copied with `share/.` so they land in `/app/share` (not nested `/app/share/share`, which Flatpak does not export).
+- AppStream metadata for Flathub lives in `data/` (`com.maks_it.wvc210.metainfo.xml`, desktop file). The from-source Flatpak manifest is `flatpak/com.maks_it.wvc210.yml`. GitHub `.flatpak` sideload stays a separate pack.
+- Flatpak application id is lowercase `com.maks_it.wvc210` (GNOME icon lookup). Uninstall the old `com.maks_it.Wvc210` id before installing a new bundle. ASF/RTSP use a product custom plugin `StageLinuxLibVlc` (not FlatpakPack): it copies Debian `libvlc.so.5`, unversioned `libvlc.so`, plugins, `libidn.so.12`, and Debian `libavcodec`/`libavutil` (Freedesktop 24.08 `libavcodec.so.61` is missing `avcodec_get_supported_config`, so MPEG-4 never decoded). Host VLC on the Linux laptop is not visible to Flatpak. Linux MPEG uses `--no-xlib` and media `:vout=vmem`. Debian VLC has no live555, so Linux RTSP plays the camera’s ASF URL (same MPEG-4). `--reset-plugins-cache` is not passed — `/app` is read-only and made `libvlc_new` fail.
+- **Go**, **Patrol**, and **User home** use camera `preset=move` again. 1.2.0 sent stored X,Y as `position=` click offsets, so patrol did not reach the saved poses.
+- AppData still keeps occupancy and last X,Y. On connect, NVRAM is written only when those slots are empty (camera reboot); an intact camera is left alone. **Save** still uses `preset=set`; **Delete** clears that slot and updates the patrol sequence in the same write.
+
 ## [1.2.0] - 2026-09-01
 
 ### Added

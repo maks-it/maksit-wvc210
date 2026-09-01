@@ -50,7 +50,7 @@ public partial class LiveViewModel : ViewModelBase
     public string SpeakerTestLabel => IsTestingSpeaker ? "Stop test" : "Test speaker";
     public bool ShowTalkMeter => IsTalking || IsTestingSpeaker;
     public bool HasFrame => Frame is not null;
-    public bool HasPreview => UseMpegPlayer || Frame is not null;
+    public bool HasPreview => Frame is not null;
     public string PanStepLabel => ((int)PanStep).ToString();
     public string TalkLatchLabel => IsTalkLatched ? "Stop latch" : "Speak latch";
     public string PatrolLabel => IsPatrolling ? "Stop patrol" : "Patrol";
@@ -79,6 +79,8 @@ public partial class LiveViewModel : ViewModelBase
     private MediaPlayer? _mpegPlayer;
     private Media? _mpegMedia;
     private int _mpegAlive;
+    private int _mpegWatch;
+    private string? _lastVlcError;
     private IntPtr _mpegBuffer;
     private int _mpegPitch;
     private byte[]? _pendingBgra;
@@ -94,6 +96,7 @@ public partial class LiveViewModel : ViewModelBase
     private bool _cameraAudioOn;
     private bool _cameraMicIn;
     private TalkCodec _talkCodec = TalkCodec.G711U;
+    private static int _linuxVlcReady;
 
     public LiveViewModel(CameraClient client, LocalTalkSettings talkSettings)
     {
@@ -251,19 +254,14 @@ public partial class LiveViewModel : ViewModelBase
         if (_libVlc is not null && _mpegPlayer is not null)
             return;
 
-        var libDir = Path.Combine(
-            AppContext.BaseDirectory,
-            "libvlc",
-            RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64");
-        if (Directory.Exists(libDir))
-            LibVLCSharp.Shared.Core.Initialize(libDir);
-        else
-            LibVLCSharp.Shared.Core.Initialize();
-        _libVlc?.Dispose();
-        _libVlc = new LibVLC(
-            "--no-video-title-show",
-            "--quiet",
-            "--network-caching=400");
+        InitializeLibVlc();
+        if (_libVlc is not null)
+        {
+            _libVlc.Log -= OnVlcLog;
+            _libVlc.Dispose();
+        }
+        _libVlc = new LibVLC(LibVlcOptions());
+        _libVlc.Log += OnVlcLog;
         var player = new MediaPlayer(_libVlc)
         {
             EnableHardwareDecoding = false
@@ -272,8 +270,11 @@ public partial class LiveViewModel : ViewModelBase
         {
             Dispatcher.UIThread.Post(() =>
             {
-                if (_sessionActive)
-                    Status = "MPEG-4 live failed. Try Snapshots, or check camera MPEG-4 is enabled.";
+                if (!_sessionActive)
+                    return;
+                Status = string.IsNullOrWhiteSpace(_lastVlcError)
+                    ? "MPEG-4 live failed. Try Snapshots, or check camera MPEG-4 is enabled."
+                    : "MPEG-4 live failed: " + _lastVlcError;
             });
         };
         player.Playing += (_, _) =>
@@ -288,9 +289,129 @@ public partial class LiveViewModel : ViewModelBase
             });
         };
         EnsureMpegBuffer();
-        player.SetVideoFormat("RV32", MpegFrameWidth, MpegFrameHeight, (uint)_mpegPitch);
         player.SetVideoCallbacks(_mpegLockCb, null, _mpegDisplayCb);
+        player.SetVideoFormat("RV32", MpegFrameWidth, MpegFrameHeight, (uint)_mpegPitch);
         _mpegPlayer = player;
+    }
+
+    private void OnVlcLog(object? sender, LogEventArgs e)
+    {
+        if (e.Level != LogLevel.Error)
+            return;
+        if (string.IsNullOrWhiteSpace(e.Message))
+            return;
+        _lastVlcError = e.Message.Trim();
+    }
+
+    private static void InitializeLibVlc()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            var libDir = Path.Combine(
+                AppContext.BaseDirectory,
+                "libvlc",
+                RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "win-arm64" : "win-x64");
+            if (Directory.Exists(libDir))
+            {
+                LibVLCSharp.Shared.Core.Initialize(libDir);
+                return;
+            }
+        }
+
+        if (OperatingSystem.IsLinux())
+            PrepareLinuxLibVlcSearchPath();
+
+        LibVLCSharp.Shared.Core.Initialize();
+    }
+
+    private static string[] LibVlcOptions()
+    {
+        if (OperatingSystem.IsLinux())
+            return
+            [
+                "--no-video-title-show",
+                "--quiet",
+                "--network-caching=400",
+                "--no-xlib"
+            ];
+
+        return
+        [
+            "--no-video-title-show",
+            "--quiet",
+            "--network-caching=400"
+        ];
+    }
+
+    private static void PrepareLinuxLibVlcSearchPath()
+    {
+        var bundled = Path.Combine(AppContext.BaseDirectory, "libvlc", "linux-x64");
+        if (!Directory.Exists(bundled))
+            return;
+
+        var current = Environment.GetEnvironmentVariable("LD_LIBRARY_PATH");
+        Environment.SetEnvironmentVariable(
+            "LD_LIBRARY_PATH",
+            string.IsNullOrEmpty(current) ? bundled : bundled + ":" + current);
+        var plugins = Path.Combine(bundled, "plugins");
+        if (Directory.Exists(plugins))
+            Environment.SetEnvironmentVariable("VLC_PLUGIN_PATH", plugins);
+
+        if (Interlocked.Exchange(ref _linuxVlcReady, 1) != 0)
+            return;
+
+        TryLoadLinuxVlcStem(bundled, "libvlccore");
+        TryLoadLinuxVlcStem(bundled, "libvlc");
+        NativeLibrary.SetDllImportResolver(
+            typeof(LibVLC).Assembly,
+            (name, _, _) => TryLoadLinuxVlcImport(bundled, name));
+    }
+
+    private static IntPtr TryLoadLinuxVlcImport(string bundled, string name)
+    {
+        var fileName = Path.GetFileName(name);
+        var stem = fileName.EndsWith(".so", StringComparison.Ordinal)
+            ? fileName[..^3]
+            : fileName;
+        if (!stem.StartsWith("lib", StringComparison.Ordinal))
+            stem = "lib" + stem;
+
+        if (!stem.Equals("libvlc", StringComparison.OrdinalIgnoreCase)
+            && !stem.Equals("libvlccore", StringComparison.OrdinalIgnoreCase))
+            return IntPtr.Zero;
+
+        return TryLoadLinuxVlcStem(bundled, stem);
+    }
+
+    private static IntPtr TryLoadLinuxVlcStem(string bundled, string stem)
+    {
+        foreach (var path in EnumerateLinuxVlcLibraryPaths(bundled, stem))
+        {
+            if (NativeLibrary.TryLoad(path, out var handle))
+                return handle;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static IEnumerable<string> EnumerateLinuxVlcLibraryPaths(string bundled, string stem)
+    {
+        var unversioned = Path.Combine(bundled, stem + ".so");
+        if (File.Exists(unversioned))
+            yield return unversioned;
+
+        string[] files;
+        try
+        {
+            files = Directory.GetFiles(bundled, stem + ".so.*");
+        }
+        catch (IOException)
+        {
+            yield break;
+        }
+
+        foreach (var file in files.OrderBy(static f => f.Length))
+            yield return file;
     }
 
     private void EnsureMpegBuffer()
@@ -385,16 +506,25 @@ public partial class LiveViewModel : ViewModelBase
             UseMpegPlayer = true;
             IsStreaming = true;
             StreamMode = kind == LiveStreamKind.Asf ? "ASF" : "RTSP";
-            var url = kind == LiveStreamKind.Asf ? _client.AsfUrl : _client.RtspUrl;
+            // Debian VLC has no live555 and Debian FFmpeg has no RTSP protocol.
+            // The WVC210 RTSP URL is the same MPEG-4 as /img/video.asf.
+            var url = kind == LiveStreamKind.Asf || OperatingSystem.IsLinux()
+                ? _client.AsfUrl
+                : _client.RtspUrl;
             _mpegMedia?.Dispose();
             _mpegMedia = new Media(_libVlc, url, FromType.FromLocation);
-            if (kind == LiveStreamKind.Rtsp)
+            _mpegMedia.AddOption(":vout=vmem");
+            _mpegMedia.AddOption(":avcodec-hw=none");
+            if (kind == LiveStreamKind.Rtsp && !OperatingSystem.IsLinux())
                 _mpegMedia.AddOption(":rtsp-tcp");
             ApplyListenMute();
             Volatile.Write(ref _mpegAlive, 1);
+            _lastVlcError = null;
             if (!_mpegPlayer.Play(_mpegMedia))
                 throw new InvalidOperationException("Could not start MPEG-4 playback.");
             Status = "Starting MPEG-4 live…";
+            var watch = Interlocked.Increment(ref _mpegWatch);
+            _ = WatchMpegFramesAsync(watch);
         }
         catch (Exception ex)
         {
@@ -407,6 +537,7 @@ public partial class LiveViewModel : ViewModelBase
 
     private void StopMpeg(bool dispose)
     {
+        Interlocked.Increment(ref _mpegWatch);
         Volatile.Write(ref _mpegAlive, 0);
         try { _mpegPlayer?.Stop(); } catch { }
         UseMpegPlayer = false;
@@ -418,8 +549,36 @@ public partial class LiveViewModel : ViewModelBase
         try { _mpegPlayer?.Dispose(); } catch { }
         _mpegPlayer = null;
         FreeMpegBuffer();
-        try { _libVlc?.Dispose(); } catch { }
-        _libVlc = null;
+        if (_libVlc is not null)
+        {
+            _libVlc.Log -= OnVlcLog;
+            try { _libVlc.Dispose(); } catch { }
+            _libVlc = null;
+        }
+    }
+
+    private async Task WatchMpegFramesAsync(int watch)
+    {
+        try
+        {
+            await Task.Delay(4000).ConfigureAwait(false);
+        }
+        catch (TaskCanceledException)
+        {
+            return;
+        }
+
+        if (watch != Volatile.Read(ref _mpegWatch))
+            return;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (watch != _mpegWatch || !_sessionActive || !UseMpegPlayer || Frame is not null)
+                return;
+            Status = string.IsNullOrWhiteSpace(_lastVlcError)
+                ? "MPEG-4 live opened but no picture. Try Snapshots or MJPEG."
+                : "MPEG-4 live failed: " + _lastVlcError;
+        });
     }
 
     private void StopVideoPump()
@@ -529,10 +688,7 @@ public partial class LiveViewModel : ViewModelBase
     private Task HomeAsync() => SafePtz(() => _client.HomeAsync(), "Home (calibration)");
 
     [RelayCommand]
-    private Task UserHomeAsync()
-        => PresetOccupancy.TryGetCoordinates(UserHome, out var x, out var y)
-            ? SafePtz(() => _client.MoveToPositionAsync(x, y), "User home")
-            : SafePtz(() => _client.UserHomeAsync(), "User home");
+    private Task UserHomeAsync() => SafePtz(() => _client.UserHomeAsync(), "User home");
 
     [RelayCommand]
     private async Task SetUserHomeAsync()
@@ -588,7 +744,7 @@ public partial class LiveViewModel : ViewModelBase
             while (!ct.IsCancellationRequested && _sessionActive)
             {
                 var index = indices[step % indices.Count];
-                await GoSavedOrCameraAsync(index, ct).ConfigureAwait(true);
+                await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
                 Status = $"Patrol → {PresetTitle(index)} ({dwell.TotalSeconds:0} s)";
                 step++;
                 await Task.Delay(dwell, ct).ConfigureAwait(true);
@@ -659,8 +815,6 @@ public partial class LiveViewModel : ViewModelBase
             return Task.CompletedTask;
         var slot = PresetByIndex(n);
         var label = slot?.DisplayName ?? ("Preset " + n);
-        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
-            return SafePtz(() => _client.MoveToPositionAsync(x, y), label);
         return SafePtz(() => _client.PresetMoveAsync(n), label);
     }
 
@@ -671,6 +825,13 @@ public partial class LiveViewModel : ViewModelBase
             return;
         await SafePtz(() => _client.PresetSetAsync(n), $"Saved preset {n}").ConfigureAwait(true);
         await RefreshPresetsAsync().ConfigureAwait(true);
+        var slot = PresetByIndex(n);
+        if (slot is not null && !PresetOccupancy.HasCoordinates(slot.Position))
+        {
+            await Task.Delay(400).ConfigureAwait(true);
+            await RefreshPresetsAsync().ConfigureAwait(true);
+        }
+
         PresetByIndex(n)?.MarkSaved();
         NotifySettingsChanged();
     }
@@ -691,7 +852,7 @@ public partial class LiveViewModel : ViewModelBase
         }
         catch
         {
-            // Camera NVRAM is best-effort; local settings are the store.
+            // Camera NVRAM is best-effort; local settings keep occupancy.
         }
 
         slot.ApplyFromCamera("", "");
@@ -708,18 +869,6 @@ public partial class LiveViewModel : ViewModelBase
         }
 
         return null;
-    }
-
-    private async Task GoSavedOrCameraAsync(int index, CancellationToken ct)
-    {
-        var slot = PresetByIndex(index);
-        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
-        {
-            await _client.MoveToPositionAsync(x, y, ct).ConfigureAwait(true);
-            return;
-        }
-
-        await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -751,39 +900,59 @@ public partial class LiveViewModel : ViewModelBase
         if (!_client.IsConfigured) return;
         try
         {
-            var presets = await _client.GetPresetsAsync().ConfigureAwait(true);
-            Dictionary<string, string> ptz;
+            var ptz = await ReadAndMergePresetsAsync().ConfigureAwait(true);
             try
             {
-                ptz = await _client.GetGroupAsync("PTZ").ConfigureAwait(true);
+                if (ptz is not null
+                    && await _client.RestoreMissingPresetsAsync(ptz, ExportPresets(), UserHome)
+                        .ConfigureAwait(true))
+                    await ReadAndMergePresetsAsync().ConfigureAwait(true);
             }
             catch
             {
-                ptz = [];
+                // Restore write is only for a wiped camera; local occupancy is still kept.
             }
 
-            foreach (var slot in Presets)
-            {
-                presets.TryGetValue("PT" + slot.Index, out var ptName);
-                ptz.TryGetValue("Preset" + slot.Index + "Name", out var groupName);
-                ptz.TryGetValue("Preset" + slot.Index + "Position", out var cameraPosition);
-                var cameraName = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
-                var (name, position) = PresetOccupancy.MergeWithCamera(
-                    slot.Name, slot.Position, cameraName, cameraPosition);
-                slot.ApplyFromCamera(name, position);
-            }
-
-            if (ptz.TryGetValue("PredefineHome", out var cameraHome)
-                && PresetOccupancy.HasCoordinates(cameraHome))
-                UserHome = cameraHome.Trim();
-
-            PresetNames = "Presets stored on this PC (kept after camera reboot).";
+            PresetNames = "Presets on the camera (this PC keeps a backup after reboot).";
             NotifySettingsChanged();
         }
         catch (Exception ex)
         {
             PresetNames = "Using stored presets (camera list unavailable): " + ex.Message;
         }
+    }
+
+    /// <returns>The PTZ group when it loaded; otherwise null (do not restore).</returns>
+    private async Task<Dictionary<string, string>?> ReadAndMergePresetsAsync()
+    {
+        var presets = await _client.GetPresetsAsync().ConfigureAwait(true);
+        Dictionary<string, string>? ptz = null;
+        try
+        {
+            ptz = await _client.GetGroupAsync("PTZ").ConfigureAwait(true);
+        }
+        catch
+        {
+            /* occupancy still merges from preset=all + local backup */
+        }
+
+        var map = ptz ?? [];
+        foreach (var slot in Presets)
+        {
+            presets.TryGetValue("PT" + slot.Index, out var ptName);
+            map.TryGetValue("Preset" + slot.Index + "Name", out var groupName);
+            map.TryGetValue("Preset" + slot.Index + "Position", out var cameraPosition);
+            var cameraName = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
+            var (name, position) = PresetOccupancy.MergeWithCamera(
+                slot.Name, slot.Position, cameraName, cameraPosition);
+            slot.ApplyFromCamera(name, position);
+        }
+
+        if (map.TryGetValue("PredefineHome", out var cameraHome)
+            && PresetOccupancy.HasCoordinates(cameraHome))
+            UserHome = cameraHome.Trim();
+
+        return ptz;
     }
 
     private async Task SafePtz(Func<Task> action, string ok)

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=WVC210
+GenericName=IP camera console
+Comment=Control a WVC210 IP camera
+Exec=maksit-wvc210
+Icon=com.maks_it.wvc210
+StartupWMClass=com.maks_it.wvc210
+StartupNotify=true
+Terminal=false
+Categories=AudioVideo;Video;
+Keywords=camera;ptz;mjpeg;rtsp;ip;

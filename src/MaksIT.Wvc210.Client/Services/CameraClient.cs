@@ -194,7 +194,26 @@ public sealed class CameraClient : IDisposable
         var ptz = await GetGroupAsync("PTZ", ct).ConfigureAwait(false);
         ptz["Preset" + index + "Name"] = "";
         ptz["Preset" + index + "Position"] = "";
+        PresetOccupancy.SyncPatrolSequence(ptz);
         await SetGroupAsync("PTZ", ptz, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Writes the already-loaded PTZ group only when local backup has
+    /// coordinates the camera is missing (NVRAM wipe). No-op when the
+    /// camera already holds those slots.
+    /// </summary>
+    /// <returns><see langword="true"/> when the PTZ group was written.</returns>
+    public async Task<bool> RestoreMissingPresetsAsync(
+        Dictionary<string, string> ptz,
+        IReadOnlyList<SavedPreset> local,
+        string? userHome,
+        CancellationToken ct = default)
+    {
+        if (!PresetOccupancy.ApplyLocalBackup(ptz, local, userHome))
+            return false;
+        await SetGroupAsync("PTZ", ptz, ct).ConfigureAwait(false);
+        return true;
     }
 
     public async Task<Dictionary<string, string>> GetPresetsAsync(CancellationToken ct = default)

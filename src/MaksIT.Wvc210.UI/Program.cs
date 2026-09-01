@@ -1,5 +1,6 @@
-using Avalonia;
 using System;
+using Avalonia;
+
 
 namespace MaksIT.Wvc210.UI;
 
@@ -13,6 +14,8 @@ sealed class Program
         .StartWithClassicDesktopLifetime(args);
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    // Linux: X11/XWayland. Avalonia 12.1.2 native Wayland still hangs on GNOME's
+    // xdg_toplevel.configure(0, 0) and never maps a window (GNOME app icon).
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()

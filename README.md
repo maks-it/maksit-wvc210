@@ -39,7 +39,33 @@ dotnet build MaksIT.Wvc210.slnx
 dotnet run --project MaksIT.Wvc210.UI
 ```
 
-Operator settings (host, pan step, live stream, presets, user home) are written to `%AppData%/MaksIT/WVC210/settings.json` (same product folder as WiX: `Program Files\MaksIT\WVC210`). `src/MaksIT.Wvc210.Shared/appsettings.json` is seed defaults only (copied next to the exe, never written).
+Operator settings (host, pan step, live stream, preset occupancy/backup, user home) are written to `%AppData%/MaksIT/WVC210/settings.json` (same product folder as WiX: `Program Files\MaksIT\WVC210`). Preset poses are stored on the camera; AppData is used to restore empty NVRAM after a reboot. `src/MaksIT.Wvc210.Shared/appsettings.json` is seed defaults only (copied next to the exe, never written).
+
+## Linux (Flatpak)
+
+GitHub releases include `maksit-wvc210-{version}.flatpak`.
+
+**User** (this account only):
+
+```bash
+flatpak install --user ./maksit-wvc210-{version}.flatpak
+flatpak run com.maks_it.wvc210
+```
+
+**System** (all users):
+
+```bash
+sudo flatpak install --system ./maksit-wvc210-{version}.flatpak
+flatpak run com.maks_it.wvc210
+```
+
+Uninstall: `flatpak uninstall --user com.maks_it.wvc210` or `sudo flatpak uninstall --system com.maks_it.wvc210`.
+
+The previous id `com.maks_it.Wvc210` is replaced by this lowercase id. Uninstall the old app before installing the new bundle (`flatpak uninstall --user com.maks_it.Wvc210` and/or `sudo flatpak uninstall --system com.maks_it.Wvc210`).
+
+If GNOME or KDE does not show a launcher icon, `flatpak run` may warn that `/var/lib/flatpak/exports/share` and `~/.local/share/flatpak/exports/share` are not on `XDG_DATA_DIRS`. Log out and back in once so the session picks up those paths.
+
+Flathub submission files (from-source manifest, AppStream) live in [`data/`](data/) and [`flatpak/`](flatpak/). See [`flatpak/README.md`](flatpak/README.md). A human must open the Flathub PR.
 
 ## Tests
 

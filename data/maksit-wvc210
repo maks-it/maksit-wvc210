@@ -1,0 +1,13 @@
+#!/bin/sh
+# Flathub build: libVLC from the libvlc module (/app/lib).
+# GitHub bundle: staged natives under /app/lib/wvc210/libvlc/linux-x64.
+if [ -d /app/lib/wvc210/libvlc/linux-x64 ]; then
+  export LD_LIBRARY_PATH="/app/lib/wvc210/libvlc/linux-x64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  if [ -d /app/lib/wvc210/libvlc/linux-x64/plugins ]; then
+    export VLC_PLUGIN_PATH=/app/lib/wvc210/libvlc/linux-x64/plugins
+  fi
+elif [ -d /app/lib/vlc/plugins ]; then
+  export LD_LIBRARY_PATH="/app/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  export VLC_PLUGIN_PATH=/app/lib/vlc/plugins
+fi
+exec /app/lib/wvc210/MaksIT.Wvc210.UI "$@"

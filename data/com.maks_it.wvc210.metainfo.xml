@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.maks_it.wvc210</id>
+  <name>WVC210</name>
+  <summary>Control a WVC210 IP camera</summary>
+  <developer id="com.maks_it">
+    <name>MaksIT</name>
+  </developer>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <description>
+    <p>Operate a WVC210 network camera from the desktop without the vendor ActiveX pages. Connect over the LAN, watch the live stream, and move the camera with pan and tilt.</p>
+    <p>The app talks to one camera at a time using its HTTP CGI interface. Settings stay on this computer; preset poses are stored on the camera and restored if a reboot clears NVRAM.</p>
+    <ul>
+      <li>Live MJPEG view, plus MPEG/RTSP when libVLC is available</li>
+      <li>Pan, tilt, presets, patrol, and a user home pose</li>
+      <li>Setup pages for users, network, and video</li>
+      <li>Talkback with G.711 when the camera allows it</li>
+    </ul>
+  </description>
+  <launchable type="desktop-id">com.maks_it.wvc210.desktop</launchable>
+  <provides>
+    <id>com.maks_it.Wvc210</id>
+  </provides>
+  <replaces>
+    <id>com.maks_it.Wvc210</id>
+  </replaces>
+  <url type="homepage">https://maks-it.com/</url>
+  <url type="bugtracker">https://github.com/maks-it/maksit-wvc210/issues</url>
+  <url type="vcs-browser">https://github.com/maks-it/maksit-wvc210</url>
+  <url type="donation">https://www.buymeacoffee.com/maksitcom</url>
+  <url type="contribute">https://github.com/maks-it/maksit-wvc210/blob/main/CONTRIBUTING.md</url>
+  <branding>
+    <color type="primary" scheme_preference="light">#33A5CF</color>
+    <color type="primary" scheme_preference="dark">#003D7A</color>
+  </branding>
+  <content_rating type="oars-1.1"/>
+  <requires>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <display_length compare="ge">768</display_length>
+  </requires>
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/maks-it/maksit-wvc210/v1.2.1/data/screenshots/live.png</image>
+      <caption>Live view with pan-tilt pad and presets</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/maks-it/maksit-wvc210/v1.2.1/data/screenshots/setup.png</image>
+      <caption>Camera setup pages</caption>
+    </screenshot>
+  </screenshots>
+  <releases>
+    <release version="1.2.1" date="2026-09-11">
+      <url type="details">https://github.com/maks-it/maksit-wvc210/blob/v1.2.1/CHANGELOG.md</url>
+      <description>
+        <p>Linux Flatpak uses X11/XWayland from the GNOME app icon, a lowercase app id, and bundled libVLC for MPEG/RTSP. Preset Go, Patrol, and User home talk to the camera with preset=move again. Empty NVRAM slots are restored from AppData without rewriting poses the camera still has.</p>
+      </description>
+    </release>
+    <release version="1.2.0" date="2026-09-01">
+      <url type="details">https://github.com/maks-it/maksit-wvc210/blob/v1.2.0/CHANGELOG.md</url>
+      <description>
+        <p>Live presets and user home are stored on this computer so Go, Patrol, and Home still work after a camera reboot clears NVRAM.</p>
+      </description>
+    </release>
+    <release version="1.1.0" date="2026-08-27">
+      <url type="details">https://github.com/maks-it/maksit-wvc210/blob/v1.1.0/CHANGELOG.md</url>
+      <description>
+        <p>Adds live Patrol through occupied presets and per-slot Delete. Audio status follows the camera talk/listen mode.</p>
+      </description>
+    </release>
+    <release version="1.0.0" date="2026-08-27">
+      <url type="details">https://github.com/maks-it/maksit-wvc210/blob/v1.0.0/CHANGELOG.md</url>
+      <description>
+        <p>First release: live view, PTZ, setup, talkback, and status for a single WVC210 camera.</p>
+      </description>
+    </release>
+  </releases>
+</component>

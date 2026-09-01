@@ -1,0 +1,4 @@
+*.xml text eol=lf
+*.desktop text eol=lf
+*.yml text eol=lf
+maksit-wvc210 text eol=lf

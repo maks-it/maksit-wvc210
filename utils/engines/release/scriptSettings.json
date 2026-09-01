@@ -65,17 +65,38 @@
       "exeNamePattern": "maksit-wvc210-{version}.exe"
     },
     {
+      "name": "StageLinuxLibVlc",
+      "stageLabel": "build",
+      "enabled": true,
+      "runtimeIdentifier": "linux-x64",
+      "wslDistro": "Debian"
+    },
+    {
       "name": "FlatpakPack",
       "stageLabel": "build",
       "enabled": true,
-      "appId": "com.maks_it.Wvc210",
+      "appId": "com.maks_it.wvc210",
       "appName": "MaksIT WVC210",
       "command": "maksit-wvc210",
       "executableName": "MaksIT.Wvc210.UI",
       "runtimeIdentifier": "linux-x64",
-      "summary": "Cisco WVC210 camera desktop UI",
+      "summary": "Control a WVC210 IP camera",
+      "description": "Desktop client for the WVC210 IP camera. Live MJPEG and MPEG/RTSP view, pan-tilt-zoom, presets, and occupancy.",
       "projectLicense": "Apache-2.0",
+      "categories": "AudioVideo;Video;",
       "iconPath": "..\\..\\..\\src\\MaksIT.Wvc210.UI\\Assets\\icon.png",
+      "metainfoPath": "..\\..\\..\\data\\com.maks_it.wvc210.metainfo.xml",
+      "desktopPath": "..\\..\\..\\data\\com.maks_it.wvc210.desktop",
+      "finishArgs": [
+        "--share=ipc",
+        "--share=network",
+        "--socket=wayland",
+        "--socket=x11",
+        "--socket=pulseaudio",
+        "--device=dri",
+        "--filesystem=xdg-documents",
+        "--filesystem=xdg-pictures"
+      ],
       "bundleNamePattern": "maksit-wvc210-{version}.flatpak",
       "buildBundle": true,
       "attachSourceZip": false,
@@ -98,9 +119,9 @@
     },
     {
       "name": "GitHub",
+      "githubSecret": "GitClone",
       "stageLabel": "release",
       "enabled": true,
-      "githubSecret": "GitHub",
       "repository": "",
       "releaseNotesFile": "..\\..\\..\\CHANGELOG.md",
       "releaseTitlePattern": "Release {version}",
@@ -119,5 +140,8 @@
         "*.flatpak"
       ]
     }
-  ]
+  ],
+  "repoUtilsSecretsShared": "RepoUtilsSecretsShared",
+  "repoUtilsSecrets": "RepoUtilsSecrets",
+  "vaultRepoUtilsApplication": "Shared"
 }
