@@ -39,7 +39,7 @@ dotnet build MaksIT.Wvc210.slnx
 dotnet run --project MaksIT.Wvc210.UI
 ```
 
-Connection defaults live in `%AppData%/MaksIT.Wvc210/settings.json` (legacy `%AppData%/Wvc210Control/settings.json` is still read). Seed defaults: `src/MaksIT.Wvc210.Shared/appsettings.json`.
+Operator settings (host, pan step, live stream, presets, user home) are written to `%AppData%/MaksIT/WVC210/settings.json` (same product folder as WiX: `Program Files\MaksIT\WVC210`). `src/MaksIT.Wvc210.Shared/appsettings.json` is seed defaults only (copied next to the exe, never written).
 
 ## Tests
 

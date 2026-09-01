@@ -13,4 +13,6 @@ public sealed class AppSettings
     public string MicrophoneId { get; set; } = "";
     public string LiveStream { get; set; } = nameof(LiveStreamKind.Asf);
     public string DayNight { get; set; } = nameof(DayNightMode.Auto);
+    public string UserHome { get; set; } = "";
+    public List<SavedPreset> Presets { get; set; } = [];
 }

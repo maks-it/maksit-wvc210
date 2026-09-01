@@ -27,6 +27,34 @@ function ConvertTo-WixIdentifier {
     return ($Prefix + $hash.Substring(0, 16))
 }
 
+function Get-DesktopInstallFolderName {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$AppName,
+
+        [Parameter(Mandatory = $false)]
+        [string]$Manufacturer,
+
+        [Parameter(Mandatory = $false)]
+        [string]$InstallFolderName
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($InstallFolderName)) {
+        return $InstallFolderName.Trim()
+    }
+
+    $name = $AppName.Trim()
+    $mfr = if ([string]::IsNullOrWhiteSpace($Manufacturer)) { '' } else { $Manufacturer.Trim() }
+    if ($mfr.Length -gt 0 -and $name.StartsWith($mfr, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $rest = $name.Substring($mfr.Length).TrimStart([char[]]@(' ', '-', '.'))
+        if (-not [string]::IsNullOrWhiteSpace($rest)) {
+            return $rest
+        }
+    }
+
+    return $name
+}
+
 function Get-MsiProductVersion {
     param(
         [Parameter(Mandatory = $true)]
@@ -215,7 +243,10 @@ function New-WixPackageXml {
         [string]$ExecutablePath,
 
         [Parameter(Mandatory = $false)]
-        [string]$InstallScope = 'perUser',
+        [string]$InstallScope = 'perMachine',
+
+        [Parameter(Mandatory = $false)]
+        [string]$InstallFolderName,
 
         [Parameter(Mandatory = $false)]
         [string]$IconPath
@@ -255,28 +286,47 @@ function New-WixPackageXml {
         $null = $package.AppendChild($prop)
     }
 
+    $desktopProp = $xml.CreateElement('Property', $ns)
+    $null = $desktopProp.SetAttribute('Id', 'INSTALLDESKTOPSHORTCUT')
+    $null = $desktopProp.SetAttribute('Value', '0')
+    $null = $package.AppendChild($desktopProp)
+
+    $productFolder = Get-DesktopInstallFolderName `
+        -AppName $AppName `
+        -Manufacturer $Manufacturer `
+        -InstallFolderName $InstallFolderName
+
     $stdLocal = $xml.CreateElement('StandardDirectory', $ns)
     $rootFolderId = if ($scope -eq 'perMachine') { 'ProgramFiles6432Folder' } else { 'LocalAppDataFolder' }
     $null = $stdLocal.SetAttribute('Id', $rootFolderId)
     $null = $package.AppendChild($stdLocal)
 
-    $programs = $xml.CreateElement('Directory', $ns)
-    $null = $programs.SetAttribute('Id', 'LocalProgramsFolder')
-    $null = $programs.SetAttribute('Name', 'Programs')
-    $null = $stdLocal.AppendChild($programs)
+    $installParent = $stdLocal
+    if (-not [string]::IsNullOrWhiteSpace($Manufacturer)) {
+        $mfrDir = $xml.CreateElement('Directory', $ns)
+        $null = $mfrDir.SetAttribute('Id', 'ManufacturerFolder')
+        $null = $mfrDir.SetAttribute('Name', $Manufacturer)
+        $null = $stdLocal.AppendChild($mfrDir)
+        $installParent = $mfrDir
+    }
 
     $installFolder = $xml.CreateElement('Directory', $ns)
     $null = $installFolder.SetAttribute('Id', 'INSTALLFOLDER')
-    $null = $installFolder.SetAttribute('Name', $AppName)
-    $null = $programs.AppendChild($installFolder)
+    $null = $installFolder.SetAttribute('Name', $productFolder)
+    $null = $installParent.AppendChild($installFolder)
 
     $stdMenu = $xml.CreateElement('StandardDirectory', $ns)
     $null = $stdMenu.SetAttribute('Id', 'ProgramMenuFolder')
     $null = $package.AppendChild($stdMenu)
     $menuDir = $xml.CreateElement('Directory', $ns)
     $null = $menuDir.SetAttribute('Id', 'AppShortcutFolder')
-    $null = $menuDir.SetAttribute('Name', $AppName)
+    $menuName = if ([string]::IsNullOrWhiteSpace($Manufacturer)) { $productFolder } else { $Manufacturer }
+    $null = $menuDir.SetAttribute('Name', $menuName)
     $null = $stdMenu.AppendChild($menuDir)
+
+    $stdDesktop = $xml.CreateElement('StandardDirectory', $ns)
+    $null = $stdDesktop.SetAttribute('Id', 'DesktopFolder')
+    $null = $package.AppendChild($stdDesktop)
 
     $dirNodes = @{
         '' = $installFolder
@@ -335,9 +385,13 @@ function New-WixPackageXml {
     $null = $shortcut.SetAttribute('Guid', '*')
     $shortcutNode = $xml.CreateElement('Shortcut', $ns)
     $null = $shortcutNode.SetAttribute('Id', 'AppStartMenuShortcut')
-    $null = $shortcutNode.SetAttribute('Name', $AppName)
+    $null = $shortcutNode.SetAttribute('Name', $productFolder)
     $null = $shortcutNode.SetAttribute('Target', "[INSTALLFOLDER]$exeName")
     $null = $shortcutNode.SetAttribute('WorkingDirectory', 'INSTALLFOLDER')
+    if (-not [string]::IsNullOrWhiteSpace($IconPath) -and (Test-Path -LiteralPath $IconPath -PathType Leaf)) {
+        $null = $shortcutNode.SetAttribute('Icon', 'AppIcon')
+    }
+
     $null = $shortcut.AppendChild($shortcutNode)
     $remove = $xml.CreateElement('RemoveFolder', $ns)
     $null = $remove.SetAttribute('Id', 'AppShortcutFolder')
@@ -353,6 +407,31 @@ function New-WixPackageXml {
     $null = $shortcut.AppendChild($reg)
     $null = $package.AppendChild($shortcut)
 
+    $desktop = $xml.CreateElement('Component', $ns)
+    $null = $desktop.SetAttribute('Id', 'DesktopShortcut')
+    $null = $desktop.SetAttribute('Directory', 'DesktopFolder')
+    $null = $desktop.SetAttribute('Guid', '*')
+    $null = $desktop.SetAttribute('Condition', 'INSTALLDESKTOPSHORTCUT = 1')
+    $desktopShortcut = $xml.CreateElement('Shortcut', $ns)
+    $null = $desktopShortcut.SetAttribute('Id', 'AppDesktopShortcut')
+    $null = $desktopShortcut.SetAttribute('Name', $productFolder)
+    $null = $desktopShortcut.SetAttribute('Target', "[INSTALLFOLDER]$exeName")
+    $null = $desktopShortcut.SetAttribute('WorkingDirectory', 'INSTALLFOLDER')
+    if (-not [string]::IsNullOrWhiteSpace($IconPath) -and (Test-Path -LiteralPath $IconPath -PathType Leaf)) {
+        $null = $desktopShortcut.SetAttribute('Icon', 'AppIcon')
+    }
+
+    $null = $desktop.AppendChild($desktopShortcut)
+    $desktopReg = $xml.CreateElement('RegistryValue', $ns)
+    $null = $desktopReg.SetAttribute('Root', 'HKCU')
+    $null = $desktopReg.SetAttribute('Key', "Software\$Manufacturer\$AppName")
+    $null = $desktopReg.SetAttribute('Name', 'desktop')
+    $null = $desktopReg.SetAttribute('Type', 'integer')
+    $null = $desktopReg.SetAttribute('Value', '1')
+    $null = $desktopReg.SetAttribute('KeyPath', 'yes')
+    $null = $desktop.AppendChild($desktopReg)
+    $null = $package.AppendChild($desktop)
+
     $feature = $xml.CreateElement('Feature', $ns)
     $null = $feature.SetAttribute('Id', 'Main')
     $null = $feature.SetAttribute('Title', $AppName)
@@ -360,6 +439,9 @@ function New-WixPackageXml {
     $refShortcut = $xml.CreateElement('ComponentRef', $ns)
     $null = $refShortcut.SetAttribute('Id', 'StartMenuShortcut')
     $null = $feature.AppendChild($refShortcut)
+    $refDesktop = $xml.CreateElement('ComponentRef', $ns)
+    $null = $refDesktop.SetAttribute('Id', 'DesktopShortcut')
+    $null = $feature.AppendChild($refDesktop)
     foreach ($id in $componentIds) {
         $cref = $xml.CreateElement('ComponentRef', $ns)
         $null = $cref.SetAttribute('Id', $id)
@@ -790,21 +872,92 @@ function New-WixBundleXml {
         [guid]$UpgradeCode,
 
         [Parameter(Mandatory = $true)]
-        [string]$MsiPath
+        [string]$MsiPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$IconPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$LogoPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$LogoSidePath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$ThemePath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$InstallScope = 'perMachine',
+
+        [Parameter(Mandatory = $false)]
+        [string]$InstallFolderName
     )
 
     $escapedName = [System.Security.SecurityElement]::Escape($AppName)
     $escapedMfr = [System.Security.SecurityElement]::Escape($Manufacturer)
+    $escapedMsi = [System.Security.SecurityElement]::Escape($MsiPath)
     $bundleUpgrade = Get-DerivedBundleUpgradeCode -UpgradeCode $UpgradeCode
+    $productFolder = Get-DesktopInstallFolderName `
+        -AppName $AppName `
+        -Manufacturer $Manufacturer `
+        -InstallFolderName $InstallFolderName
+    $iconAttr = ''
+    if (-not [string]::IsNullOrWhiteSpace($IconPath)) {
+        $iconAttr = " IconSourceFile=`"$([System.Security.SecurityElement]::Escape($IconPath))`""
+    }
+
+    $theme = 'hyperlinkLicense'
+    $logoAttrs = ''
+    if (-not [string]::IsNullOrWhiteSpace($LogoPath)) {
+        $logoAttrs += " LogoFile=`"$([System.Security.SecurityElement]::Escape($LogoPath))`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($LogoSidePath)) {
+        $theme = 'hyperlinkSidebarLicense'
+        $logoAttrs += " LogoSideFile=`"$([System.Security.SecurityElement]::Escape($LogoSidePath))`""
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($ThemePath)) {
+        $theme = 'hyperlinkSidebarLicense'
+        $logoAttrs += " ThemeFile=`"$([System.Security.SecurityElement]::Escape($ThemePath))`""
+    }
+
+    # Type=formatted so WixStdBA expands well-known folders in the InstallFolder edit box.
+    # Type=string shows the raw token, e.g. [ProgramFiles6432Folder]MaksIT\Cluster Console.
+    # Burn CSIDL folders already end with a backslash, so do not insert another one.
+    # Layout is {ProgramFiles|LocalAppData}\{Manufacturer}\{product} — product folder is the
+    # internal name (appName with manufacturer prefix stripped, or installFolderName).
+    $folderRoot = if ($InstallScope -eq 'perUser') {
+        '[LocalAppDataFolder]'
+    }
+    else {
+        '[ProgramFiles6432Folder]'
+    }
+
+    $folderPath = if ([string]::IsNullOrWhiteSpace($Manufacturer)) {
+        $folderRoot + $productFolder
+    }
+    else {
+        $folderRoot + $Manufacturer + '\' + $productFolder
+    }
+    $escapedFolder = [System.Security.SecurityElement]::Escape($folderPath)
+
+    # WiX v7 Bundle has no Scope attribute (WIX0004). MSI Package/@Scope plus
+    # InstallFolder tokens decide per-machine vs per-user; Burn infers bundle scope.
     return @"
 <?xml version="1.0" encoding="utf-8"?>
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:bal="http://wixtoolset.org/schemas/v4/wxs/bal">
-  <Bundle Name="$escapedName" Manufacturer="$escapedMfr" Version="$ProductVersion" UpgradeCode="$($bundleUpgrade.ToString('D'))">
+  <Bundle Name="$escapedName" Manufacturer="$escapedMfr" Version="$ProductVersion" UpgradeCode="$($bundleUpgrade.ToString('D'))"$iconAttr>
+    <Variable Name="InstallFolder" Type="formatted" Value="$escapedFolder" bal:Overridable="yes" />
+    <Variable Name="InstallDesktopShortcut" Type="numeric" Value="0" bal:Overridable="yes" />
     <BootstrapperApplication>
-      <bal:WixStandardBootstrapperApplication Theme="hyperlinkLicense" LicenseUrl="" />
+      <bal:WixStandardBootstrapperApplication Theme="$theme" LicenseUrl=""$logoAttrs />
     </BootstrapperApplication>
     <Chain>
-      <MsiPackage SourceFile="$MsiPath" Compressed="yes" Vital="yes" />
+      <MsiPackage SourceFile="$escapedMsi" Compressed="yes" Vital="yes">
+        <MsiProperty Name="INSTALLFOLDER" Value="[InstallFolder]" />
+        <MsiProperty Name="INSTALLDESKTOPSHORTCUT" Value="[InstallDesktopShortcut]" />
+      </MsiPackage>
     </Chain>
   </Bundle>
 </Wix>
@@ -814,6 +967,7 @@ function New-WixBundleXml {
 Export-ModuleMember -Function `
     ConvertTo-WixIdentifier, `
     Get-MsiProductVersion, `
+    Get-DesktopInstallFolderName, `
     Get-PluginPropertyValue, `
     Resolve-DesktopPublishDirectory, `
     Resolve-DesktopExecutablePath, `

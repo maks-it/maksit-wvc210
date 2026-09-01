@@ -25,7 +25,7 @@ public static class AppInfo {
 
     var version = asm.GetName().Version;
     if (version is null)
-      return "1.1.0";
+      return "1.2.0";
     return $"{version.Major}.{version.Minor}.{version.Build}";
   }
 }

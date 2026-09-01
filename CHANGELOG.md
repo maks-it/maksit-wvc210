@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-01
+
+### Added
+
+- Live presets and user home are stored in `%AppData%/MaksIT/WVC210/settings.json` (WiX install folder name, not the shipped `appsettings.json`). **Go**, **Patrol**, and **User home** use those X,Y coordinates via `position=`, so they still work after a camera reboot wipes NVRAM. Camera slots are still written on Save as a best-effort cache.
+
+### Changed
+
+- App icon is a faceted PTZ camera in MAKS.IT origami blues (`#006199` primary, `#33A5CF` highlight), not the brand M. Wordmark/black text is not used.
+- Windows setup is per-machine: install path `C:\Program Files\MaksIT\WVC210`.
+- Synced RepoUtils utils: ContainerRegistry JSON catalog (PascalCase Harbor / InCluster keys).
+
 ## [1.1.0] - 2026-08-27
 
 ### Added
@@ -39,3 +51,4 @@ Initial release: desktop operator UI for a single **Cisco WVC210** on the LAN (H
 - **Client / Shared:** CGI, streams, G.711 talkback, G.726 listen decode, WaveOut PCM playback on Windows, models, and `appsettings.json` seed defaults.
 - **Tests:** unit coverage for PTZ click map, G.711, G.726, audio operation CGI, and Sercomm base64 (no live camera). **xunit.v3** + Microsoft Testing Platform; RepoUtils test engine rewrites README coverage badges.
 - Community RepoUtils (`utils/`), Apache 2.0 hygiene, and target **net10.0**.
+

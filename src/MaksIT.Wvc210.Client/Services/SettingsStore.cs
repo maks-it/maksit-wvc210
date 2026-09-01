@@ -3,6 +3,10 @@ using MaksIT.Wvc210.Shared;
 
 namespace MaksIT.Wvc210.Client;
 
+/// <summary>
+/// User-writable settings under AppData (<c>%AppData%/MaksIT/WVC210</c>).
+/// The shipped <c>appsettings.json</c> next to the exe is seed-only and is never written.
+/// </summary>
 public static class SettingsStore
 {
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -12,23 +16,21 @@ public static class SettingsStore
 
     public static string FilePath { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "MaksIT.Wvc210",
-        "settings.json");
-
-    private static readonly string LegacyFilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-        "Wvc210Control",
+        "MaksIT",
+        "WVC210",
         "settings.json");
 
     public static AppSettings Load()
     {
         try
         {
-            var path = File.Exists(FilePath) ? FilePath : LegacyFilePath;
-            if (File.Exists(path))
+            if (File.Exists(FilePath))
             {
-                var json = File.ReadAllText(path);
-                return JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                var json = File.ReadAllText(FilePath);
+                var loaded = JsonSerializer.Deserialize<AppSettings>(json) ?? new AppSettings();
+                loaded.Presets ??= [];
+                loaded.UserHome ??= "";
+                return loaded;
             }
         }
         catch

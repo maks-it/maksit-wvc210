@@ -41,6 +41,7 @@ public partial class MainViewModel : ViewModelBase
         Live.PanStep = Math.Clamp(settings.PanStep, 1, 30);
         Live.RestoreStream(settings.LiveStream);
         Live.RestoreDayNight(settings.DayNight);
+        Live.RestorePresets(settings.Presets, settings.UserHome);
         TalkSettings.Restore(settings.MicrophoneId);
         TalkSettings.PropertyChanged += (_, e) =>
         {
@@ -53,6 +54,7 @@ public partial class MainViewModel : ViewModelBase
                 or nameof(LiveViewModel.SelectedDayNight))
                 Persist();
         };
+        Live.SettingsChanged += (_, _) => Persist();
 
         if (settings.AutoConnect && !string.IsNullOrWhiteSpace(Host))
             _ = ConnectAsync();
@@ -188,7 +190,9 @@ public partial class MainViewModel : ViewModelBase
             PanStep = (int)Math.Clamp(Live.PanStep, 1, 30),
             MicrophoneId = TalkSettings.SelectedMicrophone?.Id ?? "",
             LiveStream = Live.SelectedStream.Kind.ToString(),
-            DayNight = Live.SelectedDayNight.Mode.ToString()
+            DayNight = Live.SelectedDayNight.Mode.ToString(),
+            UserHome = Live.UserHome,
+            Presets = Live.ExportPresets()
         });
     }
 }

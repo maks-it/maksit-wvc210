@@ -7,16 +7,18 @@
         <local:ViewLocator />
     </Application.DataTemplates>
     <Application.Resources>
-        <Color x:Key="AccentColor">#3EC6D4</Color>
-        <Color x:Key="BgApp">#0B0F13</Color>
-        <Color x:Key="BgPanel">#10161C</Color>
-        <Color x:Key="BgCard">#161D24</Color>
-        <Color x:Key="BgInput">#0F141A</Color>
-        <Color x:Key="Line">#2A343C</Color>
+        <Color x:Key="AccentColor">#006199</Color>
+        <Color x:Key="HighlightColor">#33A5CF</Color>
+        <Color x:Key="BgApp">#0B1220</Color>
+        <Color x:Key="BgPanel">#101820</Color>
+        <Color x:Key="BgCard">#141C28</Color>
+        <Color x:Key="BgInput">#0E1620</Color>
+        <Color x:Key="Line">#1A3A5C</Color>
         <Color x:Key="Ok">#3DD68C</Color>
         <Color x:Key="Warn">#E6B84D</Color>
         <Color x:Key="Danger">#E25B5B</Color>
         <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentColor}" />
+        <SolidColorBrush x:Key="HighlightBrush" Color="{StaticResource HighlightColor}" />
         <SolidColorBrush x:Key="BgAppBrush" Color="{StaticResource BgApp}" />
         <SolidColorBrush x:Key="BgPanelBrush" Color="{StaticResource BgPanel}" />
         <SolidColorBrush x:Key="BgCardBrush" Color="{StaticResource BgCard}" />
@@ -24,7 +26,7 @@
         <SolidColorBrush x:Key="OkBrush" Color="{StaticResource Ok}" />
         <SolidColorBrush x:Key="WarnBrush" Color="{StaticResource Warn}" />
         <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource Danger}" />
-        <SolidColorBrush x:Key="MutedBrush" Color="#8A97A3" />
+        <SolidColorBrush x:Key="MutedBrush" Color="#8AB4D0" />
     </Application.Resources>
     <Application.Styles>
         <FluentTheme />
@@ -89,15 +91,15 @@
             <Setter Property="Background" Value="#1A242C" />
         </Style>
         <Style Selector="Button.nav.selected">
-            <Setter Property="Background" Value="#163036" />
-            <Setter Property="BorderBrush" Value="{StaticResource AccentBrush}" />
-            <Setter Property="Foreground" Value="White" />
+            <Setter Property="Background" Value="#0E2A40" />
+            <Setter Property="BorderBrush" Value="{StaticResource HighlightBrush}" />
+            <Setter Property="Foreground" Value="#E8F4FC" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
 
         <Style Selector="Button.accent">
             <Setter Property="Background" Value="{StaticResource AccentBrush}" />
-            <Setter Property="Foreground" Value="#062126" />
+            <Setter Property="Foreground" Value="#E8F4FC" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="Button.danger">
@@ -117,8 +119,8 @@
             <Setter Property="CornerRadius" Value="8" />
         </Style>
         <Style Selector="Button.ptz.home">
-            <Setter Property="Background" Value="#163036" />
-            <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+            <Setter Property="Background" Value="#0E2A40" />
+            <Setter Property="Foreground" Value="{StaticResource HighlightBrush}" />
         </Style>
 
         <Style Selector="TextBlock.hint">

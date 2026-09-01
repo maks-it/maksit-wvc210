@@ -21,6 +21,6 @@ public class AppInfoTests {
   [Fact]
   public void ReadVersion_uses_assembly_informational_version() {
     var version = AppInfo.ReadVersion(typeof(AppInfo).Assembly);
-    Assert.StartsWith("1.1.0", version);
+    Assert.StartsWith("1.2.0", version);
   }
 }

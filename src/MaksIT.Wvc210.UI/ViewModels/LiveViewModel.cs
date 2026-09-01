@@ -38,6 +38,8 @@ public partial class LiveViewModel : ViewModelBase
 
     public ObservableCollection<PresetSlotViewModel> Presets { get; } = [];
     public LocalTalkSettings TalkSettings { get; }
+    public event EventHandler? SettingsChanged;
+    public string UserHome { get; private set; } = "";
     public IReadOnlyList<LiveStreamChoice> StreamChoices => LiveStreamChoice.All;
     public bool CameraAllowsTalk =>
         _client.IsConfigured && _cameraSpeakerOn && SelectedAudioOperation.AllowsTalk;
@@ -152,6 +154,41 @@ public partial class LiveViewModel : ViewModelBase
 
     public void RestoreDayNight(string? name)
         => SelectedDayNight = DayNightChoice.Find(name);
+
+    public void RestorePresets(IReadOnlyList<SavedPreset>? presets, string? userHome)
+    {
+        UserHome = userHome?.Trim() ?? "";
+        if (presets is null)
+            return;
+
+        foreach (var saved in presets)
+        {
+            if (saved.Index is < 1 or > 9)
+                continue;
+            PresetByIndex(saved.Index)?.ApplyFromCamera(saved.Name, saved.Position);
+        }
+    }
+
+    public List<SavedPreset> ExportPresets()
+    {
+        var list = new List<SavedPreset>();
+        foreach (var slot in Presets)
+        {
+            if (!slot.HasPosition)
+                continue;
+            list.Add(new SavedPreset
+            {
+                Index = slot.Index,
+                Name = slot.Name,
+                Position = slot.Position
+            });
+        }
+
+        return list;
+    }
+
+    private void NotifySettingsChanged() =>
+        SettingsChanged?.Invoke(this, EventArgs.Empty);
 
     public async Task StartAsync()
     {
@@ -492,10 +529,17 @@ public partial class LiveViewModel : ViewModelBase
     private Task HomeAsync() => SafePtz(() => _client.HomeAsync(), "Home (calibration)");
 
     [RelayCommand]
-    private Task UserHomeAsync() => SafePtz(() => _client.UserHomeAsync(), "User home");
+    private Task UserHomeAsync()
+        => PresetOccupancy.TryGetCoordinates(UserHome, out var x, out var y)
+            ? SafePtz(() => _client.MoveToPositionAsync(x, y), "User home")
+            : SafePtz(() => _client.UserHomeAsync(), "User home");
 
     [RelayCommand]
-    private Task SetUserHomeAsync() => SafePtz(() => _client.SetUserHomeAsync(), "User home saved");
+    private async Task SetUserHomeAsync()
+    {
+        await SafePtz(() => _client.SetUserHomeAsync(), "User home saved").ConfigureAwait(true);
+        await RefreshPresetsAsync().ConfigureAwait(true);
+    }
 
     [RelayCommand]
     private Task RecalibrateAsync() => SafePtz(() => _client.RecalibrateAsync(), "Recalibrating…");
@@ -544,7 +588,7 @@ public partial class LiveViewModel : ViewModelBase
             while (!ct.IsCancellationRequested && _sessionActive)
             {
                 var index = indices[step % indices.Count];
-                await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
+                await GoSavedOrCameraAsync(index, ct).ConfigureAwait(true);
                 Status = $"Patrol → {PresetTitle(index)} ({dwell.TotalSeconds:0} s)";
                 step++;
                 await Task.Delay(dwell, ct).ConfigureAwait(true);
@@ -610,9 +654,15 @@ public partial class LiveViewModel : ViewModelBase
 
     [RelayCommand]
     private Task GoPresetAsync(string? index)
-        => int.TryParse(index, out var n)
-            ? SafePtz(() => _client.PresetMoveAsync(n), $"Preset {n}")
-            : Task.CompletedTask;
+    {
+        if (!int.TryParse(index, out var n))
+            return Task.CompletedTask;
+        var slot = PresetByIndex(n);
+        var label = slot?.DisplayName ?? ("Preset " + n);
+        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
+            return SafePtz(() => _client.MoveToPositionAsync(x, y), label);
+        return SafePtz(() => _client.PresetMoveAsync(n), label);
+    }
 
     [RelayCommand]
     private async Task SetPresetAsync(string? index)
@@ -622,6 +672,7 @@ public partial class LiveViewModel : ViewModelBase
         await SafePtz(() => _client.PresetSetAsync(n), $"Saved preset {n}").ConfigureAwait(true);
         await RefreshPresetsAsync().ConfigureAwait(true);
         PresetByIndex(n)?.MarkSaved();
+        NotifySettingsChanged();
     }
 
     [RelayCommand]
@@ -629,14 +680,23 @@ public partial class LiveViewModel : ViewModelBase
     {
         if (!int.TryParse(index, out var n))
             return;
-        if (PresetByIndex(n) is not { HasPosition: true })
+        var slot = PresetByIndex(n);
+        if (slot is not { HasPosition: true })
             return;
 
         StopPatrol();
-        await SafePtz(
-            () => _client.ClearPresetSlotAsync(n),
-            $"Deleted preset {n}").ConfigureAwait(true);
-        await RefreshPresetsAsync().ConfigureAwait(true);
+        try
+        {
+            await _client.ClearPresetSlotAsync(n).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Camera NVRAM is best-effort; local settings are the store.
+        }
+
+        slot.ApplyFromCamera("", "");
+        NotifySettingsChanged();
+        Status = $"Deleted preset {n}";
     }
 
     private PresetSlotViewModel? PresetByIndex(int index)
@@ -648,6 +708,18 @@ public partial class LiveViewModel : ViewModelBase
         }
 
         return null;
+    }
+
+    private async Task GoSavedOrCameraAsync(int index, CancellationToken ct)
+    {
+        var slot = PresetByIndex(index);
+        if (slot is not null && PresetOccupancy.TryGetCoordinates(slot.Position, out var x, out var y))
+        {
+            await _client.MoveToPositionAsync(x, y, ct).ConfigureAwait(true);
+            return;
+        }
+
+        await _client.PresetMoveAsync(index, ct).ConfigureAwait(true);
     }
 
     [RelayCommand]
@@ -694,15 +766,23 @@ public partial class LiveViewModel : ViewModelBase
             {
                 presets.TryGetValue("PT" + slot.Index, out var ptName);
                 ptz.TryGetValue("Preset" + slot.Index + "Name", out var groupName);
-                ptz.TryGetValue("Preset" + slot.Index + "Position", out var position);
-                var name = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
+                ptz.TryGetValue("Preset" + slot.Index + "Position", out var cameraPosition);
+                var cameraName = !string.IsNullOrWhiteSpace(ptName) ? ptName : groupName;
+                var (name, position) = PresetOccupancy.MergeWithCamera(
+                    slot.Name, slot.Position, cameraName, cameraPosition);
                 slot.ApplyFromCamera(name, position);
             }
-            PresetNames = "Presets loaded.";
+
+            if (ptz.TryGetValue("PredefineHome", out var cameraHome)
+                && PresetOccupancy.HasCoordinates(cameraHome))
+                UserHome = cameraHome.Trim();
+
+            PresetNames = "Presets stored on this PC (kept after camera reboot).";
+            NotifySettingsChanged();
         }
         catch (Exception ex)
         {
-            PresetNames = "Presets unavailable: " + ex.Message;
+            PresetNames = "Using stored presets (camera list unavailable): " + ex.Message;
         }
     }
 

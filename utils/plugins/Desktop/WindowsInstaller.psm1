@@ -102,10 +102,14 @@ function Invoke-Plugin {
     $upgradeCode = [guid]$upgradeCodeRaw
     $manufacturer = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'manufacturer' -Default 'MaksIT')
     $runtimeIdentifier = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'runtimeIdentifier' -Default 'win-x64')
-    $installScope = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'installScope' -Default 'perUser')
+    $installScope = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'installScope' -Default 'perMachine')
+    $installFolderName = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'installFolderName')
     $executableName = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'executableName')
     $publishDirSetting = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'publishDir')
     $iconSetting = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'iconPath')
+    $logoSetting = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'logoPath')
+    $logoSideSetting = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'logoSidePath')
+    $themeSetting = [string](Get-PluginPropertyValue -PluginSettings $pluginSettings -Name 'themePath')
 
     if ([string]::IsNullOrWhiteSpace([string]$artifactsDirectory)) {
         throw "WindowsInstaller plugin requires an artifacts directory in the shared context."
@@ -126,13 +130,66 @@ function Invoke-Plugin {
         -ExecutableName $executableName `
         -Windows
 
-    $iconPath = $null
-    if (-not [string]::IsNullOrWhiteSpace($iconSetting)) {
-        $iconPath = if ([System.IO.Path]::IsPathRooted($iconSetting)) {
-            $iconSetting
+    $brandDir = Join-Path $PSScriptRoot 'brand'
+
+    $resolvePackPath = {
+        param([string]$Setting)
+        if ([string]::IsNullOrWhiteSpace($Setting)) {
+            return $null
         }
-        else {
-            [System.IO.Path]::GetFullPath((Join-Path $scriptDir $iconSetting))
+
+        if ([System.IO.Path]::IsPathRooted($Setting)) {
+            return $Setting
+        }
+
+        return [System.IO.Path]::GetFullPath((Join-Path $scriptDir $Setting))
+    }
+
+    $iconPath = & $resolvePackPath $iconSetting
+    if (-not [string]::IsNullOrWhiteSpace($iconSetting) -and -not (Test-Path -LiteralPath $iconPath -PathType Leaf)) {
+        throw "WindowsInstaller iconPath not found: $iconPath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($iconPath)) {
+        $fallbackIcon = Join-Path $brandDir 'mark.ico'
+        if (Test-Path -LiteralPath $fallbackIcon -PathType Leaf) {
+            $iconPath = $fallbackIcon
+        }
+    }
+
+    $logoPath = & $resolvePackPath $logoSetting
+    if (-not [string]::IsNullOrWhiteSpace($logoSetting) -and -not (Test-Path -LiteralPath $logoPath -PathType Leaf)) {
+        throw "WindowsInstaller logoPath not found: $logoPath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($logoPath)) {
+        $fallbackLogo = Join-Path $brandDir 'logo-64.png'
+        if (Test-Path -LiteralPath $fallbackLogo -PathType Leaf) {
+            $logoPath = $fallbackLogo
+        }
+    }
+
+    $logoSidePath = & $resolvePackPath $logoSideSetting
+    if (-not [string]::IsNullOrWhiteSpace($logoSideSetting) -and -not (Test-Path -LiteralPath $logoSidePath -PathType Leaf)) {
+        throw "WindowsInstaller logoSidePath not found: $logoSidePath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($logoSidePath)) {
+        $fallbackSide = Join-Path $brandDir 'sidebar.png'
+        if (Test-Path -LiteralPath $fallbackSide -PathType Leaf) {
+            $logoSidePath = $fallbackSide
+        }
+    }
+
+    $themePath = & $resolvePackPath $themeSetting
+    if (-not [string]::IsNullOrWhiteSpace($themeSetting) -and -not (Test-Path -LiteralPath $themePath -PathType Leaf)) {
+        throw "WindowsInstaller themePath not found: $themePath"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($themePath)) {
+        $fallbackTheme = Join-Path $brandDir 'HyperlinkSidebarTheme.xml'
+        if (Test-Path -LiteralPath $fallbackTheme -PathType Leaf) {
+            $themePath = $fallbackTheme
         }
     }
 
@@ -161,6 +218,7 @@ function Invoke-Plugin {
         -PublishDirectory $publishDirectory `
         -ExecutablePath $executablePath `
         -InstallScope $installScope `
+        -InstallFolderName $installFolderName `
         -IconPath $iconPath
 
     $xml.Save($wxsPath)
@@ -201,7 +259,13 @@ function Invoke-Plugin {
         -Manufacturer $manufacturer `
         -ProductVersion $productVersion `
         -UpgradeCode $upgradeCode `
-        -MsiPath $msiPath
+        -MsiPath $msiPath `
+        -IconPath $iconPath `
+        -LogoPath $logoPath `
+        -LogoSidePath $logoSidePath `
+        -ThemePath $themePath `
+        -InstallScope $installScope `
+        -InstallFolderName $installFolderName
     [System.IO.File]::WriteAllText($bundleWxsPath, $bundleXml, [System.Text.UTF8Encoding]::new($false))
 
     if (Test-Path -LiteralPath $exePath -PathType Leaf) {

@@ -56,11 +56,12 @@
       "enabled": true,
       "appName": "MaksIT WVC210",
       "manufacturer": "MaksIT",
+      "installFolderName": "WVC210",
       "upgradeCode": "9c2e4f71-8b3a-4d56-a1c0-7f3e2d1c0b9a",
       "executableName": "MaksIT.Wvc210.UI.exe",
       "runtimeIdentifier": "win-x64",
-      "installScope": "perUser",
-      "iconPath": "..\\..\\..\\src\\MaksIT.Wvc210.UI\\Assets\\avalonia-logo.ico",
+      "installScope": "perMachine",
+      "iconPath": "..\\..\\..\\src\\MaksIT.Wvc210.UI\\Assets\\icon.ico",
       "exeNamePattern": "maksit-wvc210-{version}.exe"
     },
     {
@@ -74,6 +75,7 @@
       "runtimeIdentifier": "linux-x64",
       "summary": "Cisco WVC210 camera desktop UI",
       "projectLicense": "Apache-2.0",
+      "iconPath": "..\\..\\..\\src\\MaksIT.Wvc210.UI\\Assets\\icon.png",
       "bundleNamePattern": "maksit-wvc210-{version}.flatpak",
       "buildBundle": true,
       "attachSourceZip": false,

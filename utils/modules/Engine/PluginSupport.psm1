@@ -362,38 +362,164 @@ function Resolve-PluginSecretName {
     return $null
 }
 
+function Test-ContainerRegistryCatalogKey {
+    <#
+    .SYNOPSIS
+        True when Key is PascalCase (Harbor, InCluster), matching env-slot names.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Key
+    )
+
+    return $Key -cmatch '^[A-Z][A-Za-z0-9]*$'
+}
+
+function Assert-RetiredContainerRegistrySettingsAbsent {
+    <#
+    .SYNOPSIS
+        Throws when obsolete per-registry secret settings are present.
+    #>
+    param(
+        $Object,
+        [Parameter(Mandatory = $true)]
+        [string]$Context
+    )
+
+    if ($null -eq $Object) {
+        return
+    }
+
+    $retired = @(
+        'imagesCredentialsSecret',
+        'additionalImageRegistries',
+        'additionalImageRegistryUrls',
+        'additionalImagesCredentialsSecret',
+        'helmOciCredentialsSecret'
+    )
+
+    foreach ($name in $retired) {
+        $present = $false
+        if ($Object -is [System.Collections.IDictionary]) {
+            $present = $Object.Contains($name)
+        }
+        elseif ($Object.PSObject.Properties.Name -contains $name) {
+            $present = $true
+        }
+
+        if ($present) {
+            throw "${Context}: '$name' is not supported. Use the ContainerRegistry JSON catalog with PascalCase containerRegistryKey / helmRegistryKey."
+        }
+    }
+}
+
+function ConvertFrom-RegistryCredentialPayload {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Payload,
+
+        [Parameter(Mandatory = $true)]
+        [string]$ContextName
+    )
+
+    try {
+        $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($Payload.Trim()))
+    }
+    catch {
+        throw "Failed to decode '$ContextName' as Base64 (expected base64('username:password')): $($_.Exception.Message)"
+    }
+
+    $parts = $decoded -split ':', 2
+    if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrWhiteSpace($parts[1])) {
+        throw "Decoded '$ContextName' must be in the form 'username:password'."
+    }
+
+    return @{ User = $parts[0]; Password = $parts[1] }
+}
+
+function Get-ContainerRegistryCatalogObject {
+    <#
+    .SYNOPSIS
+        Parses SecretName env as a PascalCase JSON map of Base64(username:password) values.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Raw,
+
+        [Parameter(Mandatory = $true)]
+        [string]$SecretName
+    )
+
+    $trimmed = $Raw.Trim()
+    if (-not $trimmed.StartsWith('{')) {
+        throw "Environment variable '$SecretName' must be a JSON catalog object { `"Harbor`": `"<Base64>`", `"InCluster`": `"<Base64>`" }."
+    }
+
+    try {
+        $parsed = $trimmed | ConvertFrom-Json -ErrorAction Stop
+    }
+    catch {
+        throw "Environment variable '$SecretName' is not valid JSON: $($_.Exception.Message)"
+    }
+
+    if ($null -eq $parsed -or $parsed -is [System.Collections.IEnumerable]) {
+        throw "Environment variable '$SecretName' JSON catalog must be an object of PascalCase keys to Base64(username:password)."
+    }
+
+    $keyCount = 0
+    foreach ($property in $parsed.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        $keyCount++
+        $keyName = [string]$property.Name
+        if (-not (Test-ContainerRegistryCatalogKey -Key $keyName)) {
+            throw "Catalog key '$keyName' in '$SecretName' must be PascalCase (e.g. Harbor, InCluster)."
+        }
+    }
+
+    if ($keyCount -eq 0) {
+        throw "Environment variable '$SecretName' JSON catalog has no PascalCase keys."
+    }
+
+    return $parsed
+}
+
 function Get-RegistryCredentialsFromRuntime {
     <#
     .SYNOPSIS
-        Loads container-registry username/password from a logical secret name.
+        Loads container-registry username/password from a JSON catalog env var.
 
     .DESCRIPTION
-        Looks up the environment variable named by SecretName. The value must be
-        Base64(UTF8('username:password')). Used by registry login and image-pull
-        secret creation — never pass the password itself as a parameter.
+        Looks up the environment variable named by SecretName.
+        Value is a JSON object { "Harbor": "<Base64(user:pass)>", "InCluster": "..." }.
+        -Key (PascalCase, ordinal match) selects an entry.
 
     .PARAMETER SecretName
         Logical secret name (environment variable name), not a password or token.
+
+    .PARAMETER Key
+        PascalCase catalog key (e.g. Harbor). Required.
 
     .PARAMETER SharedSettings
         Optional engine shared context (reserved for callers that thread context).
 
     .OUTPUTS
         Hashtable with User and Password keys (decoded credential material).
-
-    .EXAMPLE
-        $creds = Get-RegistryCredentialsFromRuntime -SecretName 'ContainerRegistry'
-        # $creds.User / $creds.Password
     #>
-    # SecretName is a logical env-var name from scriptSettings, not a password value.
     [Diagnostics.CodeAnalysis.SuppressMessageAttribute(
         'PSAvoidUsingPlainTextForPassword',
         'SecretName',
-        Justification = 'Logical secret name for env lookup (Base64 username:password); not a credential value.'
+        Justification = 'Logical secret name for env lookup (JSON catalog of Base64 username:password); not a credential value.'
     )]
     param(
         [Parameter(Mandatory = $true)]
         [string]$SecretName,
+
+        [Parameter(Mandatory = $true)]
+        [string]$Key,
 
         [Parameter(Mandatory = $false)]
         [psobject]$SharedSettings
@@ -404,19 +530,38 @@ function Get-RegistryCredentialsFromRuntime {
         throw "Environment variable '$SecretName' is not set."
     }
 
-    try {
-        $decoded = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($raw))
-    }
-    catch {
-        throw "Failed to decode '$SecretName' as Base64 (expected base64('username:password')): $($_.Exception.Message)"
+    if ([string]::IsNullOrWhiteSpace($Key)) {
+        throw "Pass -Key (PascalCase, e.g. Harbor) to select an entry in '$SecretName'."
     }
 
-    $parts = $decoded -split ':', 2
-    if ($parts.Count -ne 2 -or [string]::IsNullOrWhiteSpace($parts[0]) -or [string]::IsNullOrWhiteSpace($parts[1])) {
-        throw "Decoded '$SecretName' must be in the form 'username:password'."
+    if (-not (Test-ContainerRegistryCatalogKey -Key $Key)) {
+        throw "containerRegistryKey '$Key' must be PascalCase (e.g. Harbor, InCluster)."
     }
 
-    return @{ User = $parts[0]; Password = $parts[1] }
+    $catalog = Get-ContainerRegistryCatalogObject -Raw $raw -SecretName $SecretName
+
+    $match = $null
+    foreach ($property in $catalog.PSObject.Properties) {
+        if ($property.MemberType -notin @('NoteProperty', 'Property')) {
+            continue
+        }
+
+        if ([string]::Equals([string]$property.Name, $Key, [System.StringComparison]::Ordinal)) {
+            $match = $property
+            break
+        }
+    }
+
+    if ($null -eq $match) {
+        throw "Catalog key '$Key' was not found in '$SecretName' (ordinal PascalCase match)."
+    }
+
+    $payload = [string]$match.Value
+    if ([string]::IsNullOrWhiteSpace($payload)) {
+        throw "Catalog key '$Key' in '$SecretName' is empty."
+    }
+
+    return ConvertFrom-RegistryCredentialPayload -Payload $payload -ContextName "${SecretName}.${Key}"
 }
 
 function Resolve-EngineDirectoryFromSharedSettings {
@@ -757,4 +902,4 @@ function Invoke-ConfiguredPlugin {
     }
 }
 
-Export-ModuleMember -Function Import-PluginDependency, Get-ConfiguredPlugins, Get-PluginStageLabel, Get-PluginBranches, Get-PluginMetadataObject, Test-PluginCompatible, Test-PluginMutatesRemote, Resolve-PluginSecretName, Get-SecretEnvironmentValue, Get-RegistryCredentialsFromRuntime, Test-PluginSkipsRemoteMutation, Test-IsPublishPlugin, Get-PluginSettingValue, Get-PluginPathListSetting, Get-PluginPathSetting, Get-ArchiveNamePattern, Resolve-PluginModulePath, Test-PluginRunnable, New-PluginInvocationSettings, Invoke-ConfiguredPlugin
+Export-ModuleMember -Function Import-PluginDependency, Get-ConfiguredPlugins, Get-PluginStageLabel, Get-PluginBranches, Get-PluginMetadataObject, Test-PluginCompatible, Test-PluginMutatesRemote, Resolve-PluginSecretName, Get-SecretEnvironmentValue, Test-ContainerRegistryCatalogKey, Assert-RetiredContainerRegistrySettingsAbsent, Get-ContainerRegistryCatalogObject, Get-RegistryCredentialsFromRuntime, Test-PluginSkipsRemoteMutation, Test-IsPublishPlugin, Get-PluginSettingValue, Get-PluginPathListSetting, Get-PluginPathSetting, Get-ArchiveNamePattern, Resolve-PluginModulePath, Test-PluginRunnable, New-PluginInvocationSettings, Invoke-ConfiguredPlugin
